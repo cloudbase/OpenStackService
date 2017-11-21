@@ -28,13 +28,14 @@ under the License.
 #define MAX_WAIT_CHILD_PROC (5 * 1000)
 
 CWrapperService::CWrapperService(PWSTR pszServiceName,
-                                 TCHAR* szCmdLine,
+                                 LPCTSTR szCmdLine,
                                  BOOL fCanStop,
                                  BOOL fCanShutdown,
                                  BOOL fCanPauseContinue)
                                  : CServiceBase(pszServiceName, fCanStop, fCanShutdown, fCanPauseContinue)
 {
-    _tcscpy_s(m_szCmdLine, MAX_PATH * 10, szCmdLine);
+    _tcscpy_s(m_szCmdLine, MAX_SVC_PATH, szCmdLine);
+    m_WaitForProcessThread = NULL;
     m_dwProcessId = 0;
     m_hProcess = NULL;
     m_IsStopping = FALSE;

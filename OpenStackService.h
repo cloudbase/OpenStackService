@@ -26,7 +26,7 @@ class CWrapperService : public CServiceBase
 public:
 
     CWrapperService(PWSTR pszServiceName,
-        TCHAR* szCmdLine,
+        LPCTSTR szCmdLine,
         BOOL fCanStop = TRUE,
         BOOL fCanShutdown = TRUE,
         BOOL fCanPauseContinue = FALSE);
