@@ -18,7 +18,6 @@ under the License.
 #pragma region Includes
 #include "OpenStackService.h"
 #include <windows.h>
-#include <tchar.h>
 #include <strsafe.h>
 #include <direct.h>
 #include <string.h>
@@ -27,14 +26,14 @@ under the License.
 
 #define MAX_WAIT_CHILD_PROC (5 * 1000)
 
-CWrapperService::CWrapperService(PWSTR pszServiceName,
-                                 LPCTSTR szCmdLine,
+CWrapperService::CWrapperService(LPCWSTR pszServiceName,
+                                 LPCWSTR szCmdLine,
                                  BOOL fCanStop,
                                  BOOL fCanShutdown,
                                  BOOL fCanPauseContinue)
                                  : CServiceBase(pszServiceName, fCanStop, fCanShutdown, fCanPauseContinue)
 {
-    _tcscpy_s(m_szCmdLine, MAX_SVC_PATH, szCmdLine);
+    wcscpy_s(m_szCmdLine, MAX_SVC_PATH, szCmdLine);
     m_WaitForProcessThread = NULL;
     m_dwProcessId = 0;
     m_hProcess = NULL;
@@ -68,17 +67,16 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
     memset(&startupInfo, 0, sizeof(startupInfo));
     startupInfo.cb = sizeof(startupInfo);
 
-    DWORD dwCreationFlags = CREATE_NO_WINDOW /*| CREATE_NEW_PROCESS_GROUP*/ | NORMAL_PRIORITY_CLASS;
+    DWORD dwCreationFlags = CREATE_NO_WINDOW /*| CREATE_NEW_PROCESS_GROUP*/ | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
 
-    TCHAR tempCmdLine[MAX_SVC_PATH];  //Needed since CreateProcessW may change the contents of CmdLine
-    _tcscpy_s(tempCmdLine, MAX_SVC_PATH, m_szCmdLine);
+    WCHAR tempCmdLine[MAX_SVC_PATH];  //Needed since CreateProcessW may change the contents of CmdLine
+    wcscpy_s(tempCmdLine, MAX_SVC_PATH, m_szCmdLine);
     if (!::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
         NULL, NULL, &startupInfo, &processInformation))
     {
         DWORD err = GetLastError();
-
-        TCHAR buf[MAX_SVC_PATH];
-        _stprintf_s(buf, _T("Error %x while spawning the process: %s"), err, tempCmdLine);
+        WCHAR buf[MAX_SVC_PATH];
+        wprintf_s(buf, L"Error %x while spawning the process: %s", err, tempCmdLine);
         WriteEventLogEntry(buf, EVENTLOG_ERROR_TYPE);
 
         throw err;

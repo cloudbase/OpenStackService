@@ -126,7 +126,7 @@ void WINAPI CServiceBase::ServiceCtrlHandler(DWORD dwCtrl)
 #pragma region Service Constructor and Destructor
 
 //
-//   FUNCTION: CServiceBase::CServiceBase(PWSTR, BOOL, BOOL, BOOL)
+//   FUNCTION: CServiceBase::CServiceBase(LPCWSTR, BOOL, BOOL, BOOL)
 //
 //   PURPOSE: The constructor of CServiceBase. It initializes a new instance
 //   of the CServiceBase class. The optional parameters (fCanStop,
@@ -140,13 +140,15 @@ void WINAPI CServiceBase::ServiceCtrlHandler(DWORD dwCtrl)
 //   * fCanShutdown - the service is notified when system shutdown occurs
 //   * fCanPauseContinue - the service can be paused and continued
 //
-CServiceBase::CServiceBase(PWSTR pszServiceName,
+CServiceBase::CServiceBase(LPCWSTR pszServiceName,
                            BOOL fCanStop,
                            BOOL fCanShutdown,
                            BOOL fCanPauseContinue)
 {
-    // Service name must be a valid string and cannot be NULL.
-    m_name = (pszServiceName == NULL) ? L"" : pszServiceName;
+    if (pszServiceName)
+        wcscpy_s(m_name, MAX_SVC_NAME, pszServiceName);
+    else
+        m_name[0] = NULL;
 
     m_statusHandle = NULL;
 

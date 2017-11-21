@@ -25,8 +25,8 @@ class CWrapperService : public CServiceBase
 {
 public:
 
-    CWrapperService(PWSTR pszServiceName,
-        LPCTSTR szCmdLine,
+    CWrapperService(LPCWSTR pszServiceName,
+        LPCWSTR szCmdLine,
         BOOL fCanStop = TRUE,
         BOOL fCanShutdown = TRUE,
         BOOL fCanPauseContinue = FALSE);
@@ -42,7 +42,7 @@ private:
     static DWORD WINAPI WaitForProcessThread(LPVOID lpParam);
     static void WINAPI KillProcessTree(DWORD dwProcId);
 
-    TCHAR m_szCmdLine[MAX_SVC_PATH];
+    WCHAR m_szCmdLine[MAX_SVC_PATH];
     DWORD m_dwProcessId;
     HANDLE m_hProcess;
     HANDLE m_WaitForProcessThread;
