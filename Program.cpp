@@ -42,8 +42,6 @@ int wmain(int argc, wchar_t *argv[])
         _tcscat_s(cmdLine, MAX_SVC_PATH, buf);
     }
 
-    //wprintf(cmdLine);
-
     CWrapperService service(argv[1], cmdLine);
     if (!CServiceBase::Run(service))
     {
