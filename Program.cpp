@@ -18,35 +18,123 @@ under the License.
 #pragma region Includes
 #include <stdio.h>
 #include <windows.h>
-#include <tchar.h>
+#include <boost/program_options.hpp>
+#include <boost/algorithm/string/join.hpp>
+#include <iostream>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <regex>
+#include <vector>
 #include "ServiceBase.h"
 #include "OpenStackService.h"
 #pragma endregion
 
+using namespace std;
+using namespace boost::program_options;
+
+struct CLIArgs
+{
+    wstring environmentFile;
+    wstring execStartPre;
+    wstring serviceName;
+    vector<wstring> additionalArgs;
+};
+
+CLIArgs ParseArgs(int argc, wchar_t *argv[]);
+EnvMap LoadEnvVarsFromFile(const wstring& path);
+
+
+CLIArgs ParseArgs(int argc, wchar_t *argv[])
+{
+    CLIArgs args;
+    options_description desc{ "Options" };
+    desc.add_options()
+        ("environment-file,e", wvalue<wstring>(), "Environment file")
+        ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
+        ("service-name,n", wvalue<wstring>(), "Service name");
+
+    variables_map vm;
+    auto parsed = wcommand_line_parser(argc, argv).
+        options(desc).allow_unregistered().run();
+    store(parsed, vm);
+    auto additionalArgs = collect_unrecognized(parsed.options, include_positional);
+    notify(vm);
+
+    if (vm.count("environment-file"))
+        args.environmentFile = vm["environment-file"].as<wstring>();
+
+    if (vm.count("exec-start-pre"))
+        args.execStartPre = vm["exec-start-pre"].as<wstring>();
+
+    if (vm.count("service-name"))
+        args.serviceName = vm["service-name"].as<wstring>();
+    else if (!additionalArgs.empty())
+    {
+        args.serviceName = additionalArgs[0];
+        additionalArgs = vector<wstring>(additionalArgs.begin() + 1, additionalArgs.end());
+    }
+
+    if(args.serviceName.empty())
+        throw exception("Service name not provided");
+
+    args.additionalArgs = additionalArgs;
+    if (args.additionalArgs.empty())
+        throw exception("Service executable not provided");
+
+    return args;
+}
+
+EnvMap LoadEnvVarsFromFile(const wstring& path)
+{
+    wifstream inputFile(path);
+    wstring line;
+    EnvMap env;
+
+    while (getline(inputFile, line))
+    {
+        wistringstream ss(line);
+        wregex rgx(L"^([^=]+)=(.*)$");
+        wsmatch matches;
+        if (regex_search(line, matches, rgx))
+        {
+            auto name = matches[1];
+            auto value = matches[2];
+            env[name] = value;
+        }
+    }
+
+    return env;
+}
+
 int wmain(int argc, wchar_t *argv[])
 {
-    if(argc <= 2)
+    try
     {
-        wprintf(L"Usage: OpenStackService <ServiceName> <PythonExe> [Arguments]\n");
+        EnvMap env;
+        auto args = ParseArgs(argc, argv);
+        if (!args.environmentFile.empty())
+            env = LoadEnvVarsFromFile(args.environmentFile);
+
+        auto it = args.additionalArgs.begin();
+        wstring cmdLine = *it++;
+        for (; it != args.additionalArgs.end(); ++it)
+            cmdLine += L" \"" + *it + L"\"";
+
+        CWrapperService service(args.serviceName.c_str(), cmdLine.c_str(), env);
+        if (!CServiceBase::Run(service))
+        {
+            char msg[100];
+            sprintf_s(msg, "Service failed to run w/err 0x%08lx", GetLastError());
+            throw exception(msg);
+        }
+
+        return 0;
+    }
+    catch (exception &ex)
+    {
+        std::cerr << ex.what() << '\n';
         return -1;
     }
-
-    TCHAR cmdLine[MAX_SVC_PATH];
-    cmdLine[0] = NULL;
-    for(int i = 2; i < argc; i++)
-    {
-        TCHAR buf[MAX_SVC_PATH];
-        if(i > 2)
-            _tcscat_s(cmdLine, MAX_SVC_PATH, _T(" "));
-        _stprintf_s(buf, _T("\"%s\""), argv[i]);
-        _tcscat_s(cmdLine, MAX_SVC_PATH, buf);
-    }
-
-    CWrapperService service(argv[1], cmdLine);
-    if (!CServiceBase::Run(service))
-    {
-        wprintf(L"Service failed to run w/err 0x%08lx\n", GetLastError());
-    }
-
-    return 0;
 }
