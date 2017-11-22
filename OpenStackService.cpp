@@ -21,18 +21,28 @@ under the License.
 #include <strsafe.h>
 #include <direct.h>
 #include <string.h>
+#include <locale>
+#include <codecvt>
 #include <TlHelp32.h>
 #pragma endregion
 
 #define MAX_WAIT_CHILD_PROC (5 * 1000)
 
+using namespace std;
+
 CWrapperService::CWrapperService(LPCWSTR pszServiceName,
                                  LPCWSTR szCmdLine,
+                                 const EnvMap& environment,
                                  BOOL fCanStop,
                                  BOOL fCanShutdown,
                                  BOOL fCanPauseContinue)
                                  : CServiceBase(pszServiceName, fCanStop, fCanShutdown, fCanPauseContinue)
 {
+    m_envBuf = L"";
+    for (auto& kv : environment)
+        m_envBuf += kv.first + L"=" + kv.second + L'\0';
+    m_envBuf += L'\0';
+
     wcscpy_s(m_szCmdLine, MAX_SVC_PATH, szCmdLine);
     m_WaitForProcessThread = NULL;
     m_dwProcessId = 0;
@@ -67,19 +77,21 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
     memset(&startupInfo, 0, sizeof(startupInfo));
     startupInfo.cb = sizeof(startupInfo);
 
-    DWORD dwCreationFlags = CREATE_NO_WINDOW /*| CREATE_NEW_PROCESS_GROUP*/ | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
+    DWORD dwCreationFlags = CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
 
+    LPVOID lpEnv = &m_envBuf[0];
     WCHAR tempCmdLine[MAX_SVC_PATH];  //Needed since CreateProcessW may change the contents of CmdLine
     wcscpy_s(tempCmdLine, MAX_SVC_PATH, m_szCmdLine);
     if (!::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
-        NULL, NULL, &startupInfo, &processInformation))
+        lpEnv, NULL, &startupInfo, &processInformation))
     {
         DWORD err = GetLastError();
         WCHAR buf[MAX_SVC_PATH];
         wprintf_s(buf, L"Error %x while spawning the process: %s", err, tempCmdLine);
         WriteEventLogEntry(buf, EVENTLOG_ERROR_TYPE);
 
-        throw err;
+        string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(buf);
+        throw exception(str.c_str());
     }
 
     m_dwProcessId = processInformation.dwProcessId;
