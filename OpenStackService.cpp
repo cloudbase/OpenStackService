@@ -23,6 +23,7 @@ under the License.
 #include <string.h>
 #include <locale>
 #include <codecvt>
+#include <regex>
 #include <TlHelp32.h>
 #pragma endregion
 

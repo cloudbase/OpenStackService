@@ -45,6 +45,7 @@ struct CLIArgs
 
 CLIArgs ParseArgs(int argc, wchar_t *argv[]);
 EnvMap LoadEnvVarsFromFile(const wstring& path);
+EnvMap GetCurrentEnv();
 
 
 CLIArgs ParseArgs(int argc, wchar_t *argv[])
@@ -87,6 +88,31 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     return args;
 }
 
+EnvMap GetCurrentEnv()
+{
+    EnvMap currentEnv;
+
+    LPTCH tmpEnv = ::GetEnvironmentStrings();
+    LPCWSTR envPair = (LPCWSTR)tmpEnv;
+    while (envPair[0])
+    {
+        wregex rgx(L"^([^=]*)=(.*)$");
+        wsmatch matches;
+        wstring envPairStr = envPair;
+        if (regex_search(envPairStr, matches, rgx))
+        {
+            auto name = matches[1].str();
+            auto value = matches[2].str();
+            currentEnv[name] = value;
+        }
+
+        envPair = envPair + envPairStr.length() + 1;
+    }
+    ::FreeEnvironmentStrings(tmpEnv);
+
+    return currentEnv;
+}
+
 EnvMap LoadEnvVarsFromFile(const wstring& path)
 {
     wifstream inputFile(path);
@@ -95,7 +121,6 @@ EnvMap LoadEnvVarsFromFile(const wstring& path)
 
     while (getline(inputFile, line))
     {
-        wistringstream ss(line);
         wregex rgx(L"^([^#][^=]*)=(.*)$");
         wsmatch matches;
         if (regex_search(line, matches, rgx))
@@ -116,7 +141,11 @@ int wmain(int argc, wchar_t *argv[])
         EnvMap env;
         auto args = ParseArgs(argc, argv);
         if (!args.environmentFile.empty())
+        {
+            auto currentEnv = GetCurrentEnv();
             env = LoadEnvVarsFromFile(args.environmentFile);
+            env.insert(currentEnv.begin(), currentEnv.end());
+        }
 
         auto it = args.additionalArgs.begin();
         wstring cmdLine = *it++;
