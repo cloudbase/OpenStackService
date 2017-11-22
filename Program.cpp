@@ -19,6 +19,7 @@ under the License.
 #include <stdio.h>
 #include <windows.h>
 #include <boost/program_options.hpp>
+#include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <iostream>
 #include <iostream>
@@ -95,12 +96,12 @@ EnvMap LoadEnvVarsFromFile(const wstring& path)
     while (getline(inputFile, line))
     {
         wistringstream ss(line);
-        wregex rgx(L"^([^=]+)=(.*)$");
+        wregex rgx(L"^([^#][^=]*)=(.*)$");
         wsmatch matches;
         if (regex_search(line, matches, rgx))
         {
-            auto name = matches[1];
-            auto value = matches[2];
+            auto name = boost::algorithm::trim_copy(matches[1].str());
+            auto value = boost::algorithm::trim_copy(matches[2].str());
             env[name] = value;
         }
     }
