@@ -21,8 +21,6 @@ under the License.
 #include <map>
 #include "ServiceBase.h"
 
-#define MAX_SVC_PATH (MAX_PATH * 10)
-
 typedef std::map<std::wstring, std::wstring> EnvMap;
 
 class CWrapperService : public CServiceBase
@@ -49,7 +47,7 @@ private:
     static void WINAPI KillProcessTree(DWORD dwProcId);
     PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess = false);
 
-    WCHAR m_szCmdLine[MAX_SVC_PATH];
+    std::wstring m_CmdLine;
     std::wstring m_ExecStartPreCmdLine;
     std::wstring m_envBuf;
     DWORD m_dwProcessId;

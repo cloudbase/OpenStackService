@@ -24,6 +24,7 @@ under the License.
 #include <locale>
 #include <codecvt>
 #include <regex>
+#include <sstream>
 #include <TlHelp32.h>
 #pragma endregion
 
@@ -48,7 +49,7 @@ CWrapperService::CWrapperService(LPCWSTR pszServiceName,
     if(szExecStartPreCmdLine)
         m_ExecStartPreCmdLine = szExecStartPreCmdLine;
 
-    wcscpy_s(m_szCmdLine, MAX_SVC_PATH, szCmdLine);
+    m_CmdLine = szCmdLine;
     m_WaitForProcessThread = NULL;
     m_dwProcessId = 0;
     m_hProcess = NULL;
@@ -84,17 +85,23 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     if (!m_envBuf.empty())
         lpEnv = &m_envBuf[0];
 
-    WCHAR tempCmdLine[MAX_SVC_PATH];  //Needed since CreateProcessW may change the contents of CmdLine
-    wcscpy_s(tempCmdLine, MAX_SVC_PATH, cmdLine);
-    if (!::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
-        lpEnv, NULL, &startupInfo, &processInformation))
+    DWORD tempCmdLineCount = lstrlen(cmdLine) + 1;
+    LPWSTR tempCmdLine = new WCHAR[tempCmdLineCount];  //Needed since CreateProcessW may change the contents of CmdLine
+    wcscpy_s(tempCmdLine, tempCmdLineCount, cmdLine);
+
+    BOOL result = ::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
+        lpEnv, NULL, &startupInfo, &processInformation);
+
+    delete[] tempCmdLine;
+
+    if (!result)
     {
         DWORD err = GetLastError();
-        WCHAR buf[MAX_SVC_PATH];
-        wprintf_s(buf, L"Error %x while spawning the process: %s", err, tempCmdLine);
-        WriteEventLogEntry(buf, EVENTLOG_ERROR_TYPE);
+        wostringstream os;
+        os << L"Error " << hex << err << L" while spawning the process: " << cmdLine;
+        WriteEventLogEntry(os.str().c_str(), EVENTLOG_ERROR_TYPE);
 
-        string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(buf);
+        string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
         throw exception(str.c_str());
     }
 
@@ -118,7 +125,7 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
     }
 
     WriteEventLogEntry(L"Starting service", EVENTLOG_INFORMATION_TYPE);
-    auto processInformation = StartProcess(m_szCmdLine);
+    auto processInformation = StartProcess(m_CmdLine.c_str());
 
     m_dwProcessId = processInformation.dwProcessId;
     m_hProcess = processInformation.hProcess;
