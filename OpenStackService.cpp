@@ -33,6 +33,7 @@ using namespace std;
 
 CWrapperService::CWrapperService(LPCWSTR pszServiceName,
                                  LPCWSTR szCmdLine,
+                                 LPCWSTR szExecStartPreCmdLine,
                                  const EnvMap& environment,
                                  BOOL fCanStop,
                                  BOOL fCanShutdown,
@@ -43,6 +44,9 @@ CWrapperService::CWrapperService(LPCWSTR pszServiceName,
     for (auto& kv : environment)
         m_envBuf += kv.first + L"=" + kv.second + L'\0';
     m_envBuf += L'\0';
+
+    if(szExecStartPreCmdLine)
+        m_ExecStartPreCmdLine = szExecStartPreCmdLine;
 
     wcscpy_s(m_szCmdLine, MAX_SVC_PATH, szCmdLine);
     m_WaitForProcessThread = NULL;
@@ -66,12 +70,8 @@ CWrapperService::~CWrapperService(void)
     }
 }
 
-void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
+PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForProcess)
 {
-    WriteEventLogEntry(L"Starting service", EVENTLOG_INFORMATION_TYPE);
-
-    m_IsStopping = FALSE;
-
     PROCESS_INFORMATION processInformation;
     STARTUPINFO startupInfo;
     memset(&processInformation, 0, sizeof(processInformation));
@@ -81,11 +81,11 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
     DWORD dwCreationFlags = CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
 
     LPVOID lpEnv = NULL;
-    if(!m_envBuf.empty())
+    if (!m_envBuf.empty())
         lpEnv = &m_envBuf[0];
 
     WCHAR tempCmdLine[MAX_SVC_PATH];  //Needed since CreateProcessW may change the contents of CmdLine
-    wcscpy_s(tempCmdLine, MAX_SVC_PATH, m_szCmdLine);
+    wcscpy_s(tempCmdLine, MAX_SVC_PATH, cmdLine);
     if (!::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
         lpEnv, NULL, &startupInfo, &processInformation))
     {
@@ -97,6 +97,28 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
         string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(buf);
         throw exception(str.c_str());
     }
+
+    if(waitForProcess)
+    {
+        ::WaitForSingleObject(processInformation.hProcess, INFINITE);
+        ::CloseHandle(processInformation.hProcess);
+    }
+
+    return processInformation;
+}
+
+void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
+{
+    m_IsStopping = FALSE;
+
+    if (!m_ExecStartPreCmdLine.empty())
+    {
+        WriteEventLogEntry(L"Running ExecStartPre command", EVENTLOG_INFORMATION_TYPE);
+        StartProcess(m_ExecStartPreCmdLine.c_str(), true);
+    }
+
+    WriteEventLogEntry(L"Starting service", EVENTLOG_INFORMATION_TYPE);
+    auto processInformation = StartProcess(m_szCmdLine);
 
     m_dwProcessId = processInformation.dwProcessId;
     m_hProcess = processInformation.hProcess;

@@ -151,7 +151,7 @@ int wmain(int argc, wchar_t *argv[])
         for (; it != args.additionalArgs.end(); ++it)
             cmdLine += L" \"" + *it + L"\"";
 
-        CWrapperService service(args.serviceName.c_str(), cmdLine.c_str(), env);
+        CWrapperService service(args.serviceName.c_str(), cmdLine.c_str(), args.execStartPre.c_str(), env);
         if (!CServiceBase::Run(service))
         {
             char msg[100];

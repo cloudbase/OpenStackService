@@ -31,6 +31,7 @@ public:
 
     CWrapperService(LPCWSTR pszServiceName,
         LPCWSTR szCmdLine,
+        LPCWSTR szExecStartPreCmdLine,
         const EnvMap& environment,
         BOOL fCanStop = TRUE,
         BOOL fCanShutdown = TRUE,
@@ -46,8 +47,10 @@ private:
 
     static DWORD WINAPI WaitForProcessThread(LPVOID lpParam);
     static void WINAPI KillProcessTree(DWORD dwProcId);
+    PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess = false);
 
     WCHAR m_szCmdLine[MAX_SVC_PATH];
+    std::wstring m_ExecStartPreCmdLine;
     std::wstring m_envBuf;
     DWORD m_dwProcessId;
     HANDLE m_hProcess;
