@@ -41,10 +41,12 @@ CWrapperService::CWrapperService(LPCWSTR pszServiceName,
                                  BOOL fCanPauseContinue)
                                  : CServiceBase(pszServiceName, fCanStop, fCanShutdown, fCanPauseContinue)
 {
-    m_envBuf = L"";
-    for (auto& kv : environment)
-        m_envBuf += kv.first + L"=" + kv.second + L'\0';
-    m_envBuf += L'\0';
+    if(!environment.empty())
+    {
+        for (auto& kv : environment)
+            m_envBuf += kv.first + L"=" + kv.second + L'\0';
+        m_envBuf += L'\0';
+    }
 
     if(szExecStartPreCmdLine)
         m_ExecStartPreCmdLine = szExecStartPreCmdLine;
