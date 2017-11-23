@@ -122,11 +122,15 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 
     if (!m_ExecStartPreCmdLine.empty())
     {
-        WriteEventLogEntry(L"Running ExecStartPre command", EVENTLOG_INFORMATION_TYPE);
+        wostringstream os;
+        os << L"Running ExecStartPre command: " << m_ExecStartPreCmdLine;
+        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
         StartProcess(m_ExecStartPreCmdLine.c_str(), true);
     }
 
-    WriteEventLogEntry(L"Starting service", EVENTLOG_INFORMATION_TYPE);
+    wostringstream os;
+    os << L"Starting service: " << m_CmdLine;
+    WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
     auto processInformation = StartProcess(m_CmdLine.c_str());
 
     m_dwProcessId = processInformation.dwProcessId;
