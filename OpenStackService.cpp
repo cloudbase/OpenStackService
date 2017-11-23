@@ -110,7 +110,23 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     if(waitForProcess)
     {
         ::WaitForSingleObject(processInformation.hProcess, INFINITE);
+
+        DWORD exitCode = 0;
+        BOOL result = ::GetExitCodeProcess(processInformation.hProcess, &exitCode);
         ::CloseHandle(processInformation.hProcess);
+
+        if (!result || exitCode)
+        {
+            wostringstream os;
+            if (!result)
+                os << L"GetExitCodeProcess failed";
+            else
+                os << L"Command \"" << cmdLine << L"\" failed with exit code: " << exitCode;
+
+            WriteEventLogEntry(os.str().c_str(), EVENTLOG_ERROR_TYPE);
+            string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
+            throw exception(str.c_str());
+        }
     }
 
     return processInformation;
