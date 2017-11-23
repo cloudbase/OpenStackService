@@ -22,7 +22,6 @@ under the License.
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <iostream>
-#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <string>
