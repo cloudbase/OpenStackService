@@ -80,7 +80,10 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 
     DWORD dwCreationFlags = CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
 
-    LPVOID lpEnv = &m_envBuf[0];
+    LPVOID lpEnv = NULL;
+    if(!m_envBuf.empty())
+        lpEnv = &m_envBuf[0];
+
     WCHAR tempCmdLine[MAX_SVC_PATH];  //Needed since CreateProcessW may change the contents of CmdLine
     wcscpy_s(tempCmdLine, MAX_SVC_PATH, m_szCmdLine);
     if (!::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
