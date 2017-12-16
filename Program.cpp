@@ -36,7 +36,7 @@ using namespace boost::program_options;
 
 struct CLIArgs
 {
-    wstring environmentFile;
+    vector<wstring> environmentFiles;
     wstring execStartPre;
     wstring serviceName;
     vector<wstring> additionalArgs;
@@ -52,7 +52,7 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     CLIArgs args;
     options_description desc{ "Options" };
     desc.add_options()
-        ("environment-file,e", wvalue<wstring>(), "Environment file")
+        ("environment-file,e", wvalue<vector<wstring>>(), "Environment file")
         ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
         ("service-name,n", wvalue<wstring>(), "Service name");
 
@@ -64,7 +64,7 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     notify(vm);
 
     if (vm.count("environment-file"))
-        args.environmentFile = vm["environment-file"].as<wstring>();
+        args.environmentFiles = vm["environment-file"].as<vector<wstring>>();
 
     if (vm.count("exec-start-pre"))
         args.execStartPre = vm["exec-start-pre"].as<wstring>();
@@ -139,11 +139,14 @@ int wmain(int argc, wchar_t *argv[])
     {
         EnvMap env;
         auto args = ParseArgs(argc, argv);
-        if (!args.environmentFile.empty())
+        if (!args.environmentFiles.empty())
         {
             auto currentEnv = GetCurrentEnv();
-            env = LoadEnvVarsFromFile(args.environmentFile);
-            env.insert(currentEnv.begin(), currentEnv.end());
+            for (auto envFile : args.environmentFiles)
+            {
+                env = LoadEnvVarsFromFile(envFile);
+                env.insert(currentEnv.begin(), currentEnv.end());
+            }
         }
 
         auto it = args.additionalArgs.begin();
