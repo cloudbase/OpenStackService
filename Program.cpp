@@ -146,6 +146,7 @@ int wmain(int argc, wchar_t *argv[])
             {
                 env = LoadEnvVarsFromFile(envFile);
                 env.insert(currentEnv.begin(), currentEnv.end());
+                currentEnv = env;
             }
         }
 
