@@ -17,16 +17,20 @@ under the License.
 
 #pragma once
 
+#include <string>
+#include <map>
 #include "ServiceBase.h"
 
-#define MAX_SVC_PATH (MAX_PATH * 10)
+typedef std::map<std::wstring, std::wstring> EnvMap;
 
 class CWrapperService : public CServiceBase
 {
 public:
 
-    CWrapperService(PWSTR pszServiceName,
-        TCHAR* szCmdLine,
+    CWrapperService(LPCWSTR pszServiceName,
+        LPCWSTR szCmdLine,
+        LPCWSTR szExecStartPreCmdLine,
+        const EnvMap& environment,
         BOOL fCanStop = TRUE,
         BOOL fCanShutdown = TRUE,
         BOOL fCanPauseContinue = FALSE);
@@ -41,8 +45,11 @@ private:
 
     static DWORD WINAPI WaitForProcessThread(LPVOID lpParam);
     static void WINAPI KillProcessTree(DWORD dwProcId);
+    PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess = false);
 
-    TCHAR m_szCmdLine[MAX_SVC_PATH];
+    std::wstring m_CmdLine;
+    std::wstring m_ExecStartPreCmdLine;
+    std::wstring m_envBuf;
     DWORD m_dwProcessId;
     HANDLE m_hProcess;
     HANDLE m_WaitForProcessThread;

@@ -18,23 +18,41 @@ under the License.
 #pragma region Includes
 #include "OpenStackService.h"
 #include <windows.h>
-#include <tchar.h>
 #include <strsafe.h>
 #include <direct.h>
 #include <string.h>
+#include <locale>
+#include <codecvt>
+#include <regex>
+#include <sstream>
 #include <TlHelp32.h>
 #pragma endregion
 
 #define MAX_WAIT_CHILD_PROC (5 * 1000)
 
-CWrapperService::CWrapperService(PWSTR pszServiceName,
-                                 TCHAR* szCmdLine,
+using namespace std;
+
+CWrapperService::CWrapperService(LPCWSTR pszServiceName,
+                                 LPCWSTR szCmdLine,
+                                 LPCWSTR szExecStartPreCmdLine,
+                                 const EnvMap& environment,
                                  BOOL fCanStop,
                                  BOOL fCanShutdown,
                                  BOOL fCanPauseContinue)
                                  : CServiceBase(pszServiceName, fCanStop, fCanShutdown, fCanPauseContinue)
 {
-    _tcscpy_s(m_szCmdLine, MAX_PATH * 10, szCmdLine);
+    if(!environment.empty())
+    {
+        for (auto& kv : environment)
+            m_envBuf += kv.first + L"=" + kv.second + L'\0';
+        m_envBuf += L'\0';
+    }
+
+    if(szExecStartPreCmdLine)
+        m_ExecStartPreCmdLine = szExecStartPreCmdLine;
+
+    m_CmdLine = szCmdLine;
+    m_WaitForProcessThread = NULL;
     m_dwProcessId = 0;
     m_hProcess = NULL;
     m_IsStopping = FALSE;
@@ -55,33 +73,81 @@ CWrapperService::~CWrapperService(void)
     }
 }
 
-void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
+PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForProcess)
 {
-    WriteEventLogEntry(L"Starting service", EVENTLOG_INFORMATION_TYPE);
-
-    m_IsStopping = FALSE;
-
     PROCESS_INFORMATION processInformation;
     STARTUPINFO startupInfo;
     memset(&processInformation, 0, sizeof(processInformation));
     memset(&startupInfo, 0, sizeof(startupInfo));
     startupInfo.cb = sizeof(startupInfo);
 
-    DWORD dwCreationFlags = CREATE_NO_WINDOW /*| CREATE_NEW_PROCESS_GROUP*/ | NORMAL_PRIORITY_CLASS;
+    DWORD dwCreationFlags = CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
 
-    TCHAR tempCmdLine[MAX_SVC_PATH];  //Needed since CreateProcessW may change the contents of CmdLine
-    _tcscpy_s(tempCmdLine, MAX_SVC_PATH, m_szCmdLine);
-    if (!::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
-        NULL, NULL, &startupInfo, &processInformation))
+    LPVOID lpEnv = NULL;
+    if (!m_envBuf.empty())
+        lpEnv = &m_envBuf[0];
+
+    DWORD tempCmdLineCount = lstrlen(cmdLine) + 1;
+    LPWSTR tempCmdLine = new WCHAR[tempCmdLineCount];  //Needed since CreateProcessW may change the contents of CmdLine
+    wcscpy_s(tempCmdLine, tempCmdLineCount, cmdLine);
+
+    BOOL result = ::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
+        lpEnv, NULL, &startupInfo, &processInformation);
+
+    delete[] tempCmdLine;
+
+    if (!result)
     {
         DWORD err = GetLastError();
+        wostringstream os;
+        os << L"Error " << hex << err << L" while spawning the process: " << cmdLine;
+        WriteEventLogEntry(os.str().c_str(), EVENTLOG_ERROR_TYPE);
 
-        TCHAR buf[MAX_SVC_PATH];
-        _stprintf_s(buf, _T("Error %x while spawning the process: %s"), err, tempCmdLine);
-        WriteEventLogEntry(buf, EVENTLOG_ERROR_TYPE);
-
-        throw err;
+        string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
+        throw exception(str.c_str());
     }
+
+    if(waitForProcess)
+    {
+        ::WaitForSingleObject(processInformation.hProcess, INFINITE);
+
+        DWORD exitCode = 0;
+        BOOL result = ::GetExitCodeProcess(processInformation.hProcess, &exitCode);
+        ::CloseHandle(processInformation.hProcess);
+
+        if (!result || exitCode)
+        {
+            wostringstream os;
+            if (!result)
+                os << L"GetExitCodeProcess failed";
+            else
+                os << L"Command \"" << cmdLine << L"\" failed with exit code: " << exitCode;
+
+            WriteEventLogEntry(os.str().c_str(), EVENTLOG_ERROR_TYPE);
+            string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
+            throw exception(str.c_str());
+        }
+    }
+
+    return processInformation;
+}
+
+void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
+{
+    m_IsStopping = FALSE;
+
+    if (!m_ExecStartPreCmdLine.empty())
+    {
+        wostringstream os;
+        os << L"Running ExecStartPre command: " << m_ExecStartPreCmdLine;
+        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
+        StartProcess(m_ExecStartPreCmdLine.c_str(), true);
+    }
+
+    wostringstream os;
+    os << L"Starting service: " << m_CmdLine;
+    WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
+    auto processInformation = StartProcess(m_CmdLine.c_str());
 
     m_dwProcessId = processInformation.dwProcessId;
     m_hProcess = processInformation.hProcess;

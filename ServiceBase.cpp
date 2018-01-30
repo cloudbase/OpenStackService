@@ -1,19 +1,21 @@
-/*
-Copyright 2012 Cloudbase Solutions Srl
-All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may
-not use this file except in compliance with the License. You may obtain
-a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-License for the specific language governing permissions and limitations
-under the License.
-*/
+/****************************** Module Header ******************************\
+* Module Name:  ServiceBase.cpp
+* Project:      CppWindowsService
+* Copyright (c) Microsoft Corporation.
+* Copyright (c) Cloudbase Solutions Srl.
+*
+* Provides a base class for a service that will exist as part of a service
+* application. CServiceBase must be derived from when creating a new service
+* class.
+*
+* This source is subject to the Microsoft Public License.
+* See http://www.microsoft.com/en-us/openness/resources/licenses.aspx#MPL.
+* All other rights reserved.
+*
+* THIS CODE AND INFORMATION IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND,
+* EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+* WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
+\***************************************************************************/
 
 #pragma region Includes
 #include "ServiceBase.h"
@@ -126,7 +128,7 @@ void WINAPI CServiceBase::ServiceCtrlHandler(DWORD dwCtrl)
 #pragma region Service Constructor and Destructor
 
 //
-//   FUNCTION: CServiceBase::CServiceBase(PWSTR, BOOL, BOOL, BOOL)
+//   FUNCTION: CServiceBase::CServiceBase(LPCWSTR, BOOL, BOOL, BOOL)
 //
 //   PURPOSE: The constructor of CServiceBase. It initializes a new instance
 //   of the CServiceBase class. The optional parameters (fCanStop,
@@ -140,13 +142,15 @@ void WINAPI CServiceBase::ServiceCtrlHandler(DWORD dwCtrl)
 //   * fCanShutdown - the service is notified when system shutdown occurs
 //   * fCanPauseContinue - the service can be paused and continued
 //
-CServiceBase::CServiceBase(PWSTR pszServiceName,
+CServiceBase::CServiceBase(LPCWSTR pszServiceName,
                            BOOL fCanStop,
                            BOOL fCanShutdown,
                            BOOL fCanPauseContinue)
 {
-    // Service name must be a valid string and cannot be NULL.
-    m_name = (pszServiceName == NULL) ? L"" : pszServiceName;
+    if (pszServiceName)
+        wcscpy_s(m_name, MAX_SVC_NAME, pszServiceName);
+    else
+        m_name[0] = NULL;
 
     m_statusHandle = NULL;
 
@@ -496,7 +500,7 @@ void CServiceBase::SetServiceStatus(DWORD dwCurrentState,
 //     EVENTLOG_INFORMATION_TYPE
 //     EVENTLOG_WARNING_TYPE
 //
-void CServiceBase::WriteEventLogEntry(PWSTR pszMessage, WORD wType)
+void CServiceBase::WriteEventLogEntry(PCWSTR pszMessage, WORD wType)
 {
     HANDLE hEventSource = NULL;
     LPCWSTR lpszStrings[2] = { NULL, NULL };
