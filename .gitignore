@@ -18,6 +18,9 @@ build/
 bld/
 [Bb]in/
 [Oo]bj/
+.vs/
+Sdk10Debug
+Sdk10Release
 
 OpenStackService/Release/
 HyperVNovaComputeSetup/Python27.wxs
