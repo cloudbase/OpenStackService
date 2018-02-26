@@ -21,6 +21,7 @@ bld/
 .vs/
 Sdk10Debug
 Sdk10Release
+nuget.exe
 
 OpenStackService/Release/
 HyperVNovaComputeSetup/Python27.wxs
