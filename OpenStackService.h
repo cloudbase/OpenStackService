@@ -33,7 +33,8 @@ public:
         const EnvMap& environment,
         BOOL fCanStop = TRUE,
         BOOL fCanShutdown = TRUE,
-        BOOL fCanPauseContinue = FALSE);
+        BOOL fCanPauseContinue = FALSE,
+        HANDLE fStdOutErrHandle = INVALID_HANDLE_VALUE);
     virtual ~CWrapperService(void);
 
 protected:
@@ -53,5 +54,6 @@ private:
     DWORD m_dwProcessId;
     HANDLE m_hProcess;
     HANDLE m_WaitForProcessThread;
+    HANDLE m_StdOutErrHandle;
     volatile BOOL m_IsStopping;
 };

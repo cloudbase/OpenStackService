@@ -38,7 +38,8 @@ CWrapperService::CWrapperService(LPCWSTR pszServiceName,
                                  const EnvMap& environment,
                                  BOOL fCanStop,
                                  BOOL fCanShutdown,
-                                 BOOL fCanPauseContinue)
+                                 BOOL fCanPauseContinue,
+                                 HANDLE fStdOutErrHandle)
                                  : CServiceBase(pszServiceName, fCanStop, fCanShutdown, fCanPauseContinue)
 {
     if(!environment.empty())
@@ -50,6 +51,11 @@ CWrapperService::CWrapperService(LPCWSTR pszServiceName,
 
     if(szExecStartPreCmdLine)
         m_ExecStartPreCmdLine = szExecStartPreCmdLine;
+
+    if (fStdOutErrHandle != INVALID_HANDLE_VALUE)
+        m_StdOutErrHandle = fStdOutErrHandle;
+    else
+        m_StdOutErrHandle = INVALID_HANDLE_VALUE;
 
     m_CmdLine = szCmdLine;
     m_WaitForProcessThread = NULL;
@@ -80,6 +86,12 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     memset(&processInformation, 0, sizeof(processInformation));
     memset(&startupInfo, 0, sizeof(startupInfo));
     startupInfo.cb = sizeof(startupInfo);
+    if (m_StdOutErrHandle != INVALID_HANDLE_VALUE) {
+        startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+        startupInfo.hStdInput = NULL;
+        startupInfo.hStdError = m_StdOutErrHandle;
+        startupInfo.hStdOutput = m_StdOutErrHandle;
+    }
 
     DWORD dwCreationFlags = CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
 
@@ -91,7 +103,7 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     LPWSTR tempCmdLine = new WCHAR[tempCmdLineCount];  //Needed since CreateProcessW may change the contents of CmdLine
     wcscpy_s(tempCmdLine, tempCmdLineCount, cmdLine);
 
-    BOOL result = ::CreateProcess(NULL, tempCmdLine, NULL, NULL, FALSE, dwCreationFlags,
+    BOOL result = ::CreateProcess(NULL, tempCmdLine, NULL, NULL, TRUE, dwCreationFlags,
         lpEnv, NULL, &startupInfo, &processInformation);
 
     delete[] tempCmdLine;

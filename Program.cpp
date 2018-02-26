@@ -40,6 +40,7 @@ struct CLIArgs
     wstring execStartPre;
     wstring serviceName;
     vector<wstring> additionalArgs;
+    wstring logFile;
 };
 
 CLIArgs ParseArgs(int argc, wchar_t *argv[]);
@@ -54,7 +55,8 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     desc.add_options()
         ("environment-file,e", wvalue<vector<wstring>>(), "Environment file")
         ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
-        ("service-name,n", wvalue<wstring>(), "Service name");
+        ("service-name,n", wvalue<wstring>(), "Service name")
+        ("log-file", wvalue<wstring>(), "Log file containing  the redirected STD OUT and ERR of the child process");
 
     variables_map vm;
     auto parsed = wcommand_line_parser(argc, argv).
@@ -68,6 +70,9 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
 
     if (vm.count("exec-start-pre"))
         args.execStartPre = vm["exec-start-pre"].as<wstring>();
+
+    if (vm.count("log-file"))
+        args.logFile = vm["log-file"].as<wstring>();
 
     if (vm.count("service-name"))
         args.serviceName = vm["service-name"].as<wstring>();
@@ -135,6 +140,7 @@ EnvMap LoadEnvVarsFromFile(const wstring& path)
 
 int wmain(int argc, wchar_t *argv[])
 {
+    HANDLE hLogFile = INVALID_HANDLE_VALUE;
     try
     {
         EnvMap env;
@@ -155,19 +161,42 @@ int wmain(int argc, wchar_t *argv[])
         for (; it != args.additionalArgs.end(); ++it)
             cmdLine += L" \"" + *it + L"\"";
 
-        CWrapperService service(args.serviceName.c_str(), cmdLine.c_str(), args.execStartPre.c_str(), env);
+        if (!args.logFile.empty())
+        {
+            SECURITY_ATTRIBUTES sa;
+            sa.nLength = sizeof(sa);
+            sa.lpSecurityDescriptor = NULL;
+            sa.bInheritHandle = TRUE;
+            hLogFile = CreateFile(args.logFile.c_str(),
+                                FILE_APPEND_DATA,
+                                FILE_READ_DATA | FILE_WRITE_DATA,
+                                &sa,
+                                OPEN_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL,
+                                NULL);
+            if (hLogFile == INVALID_HANDLE_VALUE)
+            {
+                char msg[100];
+                sprintf_s(msg, "Failed to create log file w/err 0x%08lx", GetLastError());
+                throw exception(msg);
+            }
+        }
+        CWrapperService service(args.serviceName.c_str(), cmdLine.c_str(),
+                                args.execStartPre.c_str(), env, TRUE, TRUE, FALSE, hLogFile);
         if (!CServiceBase::Run(service))
         {
             char msg[100];
             sprintf_s(msg, "Service failed to run w/err 0x%08lx", GetLastError());
+            CloseHandle(hLogFile);
             throw exception(msg);
         }
-
+        CloseHandle(hLogFile);
         return 0;
     }
     catch (exception &ex)
     {
         std::cerr << ex.what() << '\n';
+        CloseHandle(hLogFile);
         return -1;
     }
 }
