@@ -37,6 +37,7 @@ using namespace boost::program_options;
 struct CLIArgs
 {
     vector<wstring> environmentFiles;
+    vector<wstring> environmentFilesPShell;
     wstring execStartPre;
     wstring serviceName;
     vector<wstring> additionalArgs;
@@ -54,6 +55,7 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     options_description desc{ "Options" };
     desc.add_options()
         ("environment-file,e", wvalue<vector<wstring>>(), "Environment file")
+        ("environment-file-pshell", wvalue<vector<wstring>>(), "Powershell environment files")
         ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
         ("service-name,n", wvalue<wstring>(), "Service name")
         ("log-file", wvalue<wstring>(), "Log file containing  the redirected STD OUT and ERR of the child process");
@@ -67,6 +69,9 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
 
     if (vm.count("environment-file"))
         args.environmentFiles = vm["environment-file"].as<vector<wstring>>();
+
+    if (vm.count("environment-file-pshell"))
+        args.environmentFilesPShell = vm["environment-file-pshell"].as<vector<wstring>>();
 
     if (vm.count("exec-start-pre"))
         args.execStartPre = vm["exec-start-pre"].as<wstring>();
@@ -138,6 +143,27 @@ EnvMap LoadEnvVarsFromFile(const wstring& path)
     return env;
 }
 
+EnvMap LoadPShellEnvVarsFromFile(const wstring& path)
+{
+    wifstream inputFile(path);
+    wstring line;
+    EnvMap env;
+
+    while (getline(inputFile, line))
+    {
+        wregex rgx(L"^\\s*\\$env:([^#=]*)=['\"](.*)['\"]$");
+        wsmatch matches;
+        if (regex_search(line, matches, rgx))
+        {
+            auto name = boost::algorithm::trim_copy(matches[1].str());
+            auto value = boost::algorithm::trim_copy(matches[2].str());
+            env[name] = value;
+        }
+    }
+
+    return env;
+}
+
 int wmain(int argc, wchar_t *argv[])
 {
     HANDLE hLogFile = INVALID_HANDLE_VALUE;
@@ -145,12 +171,19 @@ int wmain(int argc, wchar_t *argv[])
     {
         EnvMap env;
         auto args = ParseArgs(argc, argv);
-        if (!args.environmentFiles.empty())
+        if (!args.environmentFiles.empty() ||
+            !args.environmentFilesPShell.empty())
         {
             auto currentEnv = GetCurrentEnv();
             for (auto envFile : args.environmentFiles)
             {
                 env = LoadEnvVarsFromFile(envFile);
+                env.insert(currentEnv.begin(), currentEnv.end());
+                currentEnv = env;
+            }
+            for (auto envFile : args.environmentFilesPShell)
+            {
+                env = LoadPShellEnvVarsFromFile(envFile);
                 env.insert(currentEnv.begin(), currentEnv.end());
                 currentEnv = env;
             }

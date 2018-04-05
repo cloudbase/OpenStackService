@@ -8,6 +8,7 @@ The project is created and maintained under [Apache License v2](LICENSE)
 Beside just wrapping binaries the service wrapper has some interesting features:
 - `--log-file <file>` this will allow the service wrapper to output the STD_ERR and STD_OUT to a given file specified by <file>
 - `environment-file` environment file to be added to the given wrapped binary
+- `environment-file-pshell` environment file in powershell format to be added to the given wrapped binary
 - `exec-start-pre` command to be executed before starting the service
 
 Simple example to wrap a binary:
