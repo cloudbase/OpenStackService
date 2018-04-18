@@ -25,46 +25,109 @@ under the License.
 #include <codecvt>
 #include <regex>
 #include <sstream>
+#include <fstream>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/algorithm/string/join.hpp>
 #include <TlHelp32.h>
 #pragma endregion
 
 #define MAX_WAIT_CHILD_PROC (5 * 1000)
 
 using namespace std;
+std::wstring SYSTEMD_ACTIVE_UNIT_DIRECTORY = L"c:\\SystemD\\system\\";
 
-CWrapperService::CWrapperService(LPCWSTR pszServiceName,
-                                 LPCWSTR szCmdLine,
-                                 LPCWSTR szExecStartPreCmdLine,
-                                 const EnvMap& environment,
-                                 BOOL fCanStop,
-                                 BOOL fCanShutdown,
-                                 BOOL fCanPauseContinue,
-                                 HANDLE fStdOutErrHandle)
-                                 : CServiceBase(pszServiceName, fCanStop, fCanShutdown, fCanPauseContinue)
+CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
+                                 : CServiceBase(params.szServiceName, 
+                                                params.fCanStop, 
+                                                params.fCanShutdown,
+                                                params.fCanPauseContinue)
 {
-    if(!environment.empty())
-    {
-        for (auto& kv : environment)
-            m_envBuf += kv.first + L"=" + kv.second + L'\0';
-        m_envBuf += L'\0';
+    if (params.szExecStartPre) {
+        m_ExecStartPreCmdLine = params.szShellCmdPre;
+        m_ExecStartPreCmdLine.append(params.szExecStartPre);
+        m_ExecStartPreCmdLine.append(params.szShellCmdPost);
     }
 
-    if(szExecStartPreCmdLine)
-        m_ExecStartPreCmdLine = szExecStartPreCmdLine;
+    if (params.szExecStart) {
+        m_ExecStartCmdLine = params.szShellCmdPre;
+        m_ExecStartCmdLine.append(params.szExecStart);
+        m_ExecStartCmdLine.append(params.szShellCmdPost);
+    }
 
-    if (fStdOutErrHandle != INVALID_HANDLE_VALUE)
-        m_StdOutErrHandle = fStdOutErrHandle;
-    else
-        m_StdOutErrHandle = INVALID_HANDLE_VALUE;
+    if (params.szExecStartPost) {
+        m_ExecStartPostCmdLine = params.szShellCmdPre;
+        m_ExecStartPostCmdLine.append(params.szExecStartPost);
+        m_ExecStartPostCmdLine.append(params.szShellCmdPost);
+    }
 
-    m_CmdLine = szCmdLine;
+    if (params.szExecStop) {
+        m_ExecStopCmdLine = params.szShellCmdPre;
+        m_ExecStopCmdLine.append(params.szExecStop);
+        m_ExecStopCmdLine.append(params.szShellCmdPost);
+    }
+
+    if (params.szExecStopPost) {
+        m_ExecStopPostCmdLine = params.szShellCmdPre;
+        m_ExecStopPostCmdLine.append(params.szExecStopPost);
+        m_ExecStopPostCmdLine.append(params.szShellCmdPost);
+    }
+
+    if (params.fStdOutHandle != INVALID_HANDLE_VALUE) {
+        m_StdOutHandle = params.fStdOutHandle;
+    }
+    else {
+        m_StdOutHandle = INVALID_HANDLE_VALUE;
+    }
+
+    if (params.fStdErrHandle != INVALID_HANDLE_VALUE) {
+        m_StdErrHandle = params.fStdErrHandle;
+    }
+    else {
+        m_StdErrHandle = INVALID_HANDLE_VALUE;
+    }
+   
+    if (!params.files_before.empty()) {
+        m_FilesBefore = params.files_before;
+    }
+
+    if (!params.services_before.empty()) {
+        m_ServicesBefore = params.services_before;
+    }
+
+    if (!params.files_after.empty()) {
+        m_FilesAfter = params.files_after;
+    }
+
+    if (!params.services_after.empty()) {
+        m_ServicesAfter = params.services_after;
+    }
+
+    if (!params.files_requisite.empty()) {
+        m_Requisite_Files = params.files_requisite;
+    }
+
+    if (!params.services_requisite.empty()) {
+        m_Requisite_Services = params.services_requisite;
+    }
+
+    if (!params.environmentFiles.empty()) {
+        m_EnvironmentFiles = params.environmentFiles;
+    }
+
+    if (!params.environmentVars.empty()) {
+        m_EnvironmentVars = params.environmentVars;
+    }
+
+    m_ServiceName = params.szServiceName;
+
     m_WaitForProcessThread = NULL;
     m_dwProcessId = 0;
-    m_hProcess = NULL;
+    m_hProcess   = NULL;
     m_IsStopping = FALSE;
 }
 
 CWrapperService::~CWrapperService(void)
+
 {
     if (m_hProcess)
     {
@@ -79,6 +142,65 @@ CWrapperService::~CWrapperService(void)
     }
 }
 
+
+void CWrapperService::GetCurrentEnv()
+{
+    LPTCH tmpEnv = ::GetEnvironmentStrings();
+    LPCWSTR envPair = (LPCWSTR)tmpEnv;
+    while (envPair[0])
+    {
+        wregex rgx(L"^([^=]*)=(.*)$");
+        wsmatch matches;
+        wstring envPairStr = envPair;
+        if (regex_search(envPairStr, matches, rgx))
+        {
+            auto name = matches[1].str();
+            auto value = matches[2].str();
+            m_Env[name] = value;
+        }
+
+        envPair = envPair + envPairStr.length() + 1;
+    }
+    ::FreeEnvironmentStrings(tmpEnv);
+}
+
+void CWrapperService::LoadEnvVarsFromFile(const wstring& path)
+{
+    wifstream inputFile(path);
+    wstring line;
+
+    while (getline(inputFile, line))
+    {
+        wregex rgx(L"^([^#][^=]*)=(.*)$");
+        wsmatch matches;
+        if (regex_search(line, matches, rgx))
+        {
+            auto name = boost::algorithm::trim_copy(matches[1].str());
+            auto value = boost::algorithm::trim_copy(matches[2].str());
+            m_Env[name] = value;
+        }
+    }
+}
+
+void CWrapperService::LoadPShellEnvVarsFromFile(const wstring& path)
+{
+    wifstream inputFile(path);
+    wstring line;
+
+    while (getline(inputFile, line))
+    {
+        wregex rgx(L"^\\s*\\$env:([^#=]*)=['\"](.*)['\"]$");
+        wsmatch matches;
+        if (regex_search(line, matches, rgx))
+        {
+            auto name = boost::algorithm::trim_copy(matches[1].str());
+            auto value = boost::algorithm::trim_copy(matches[2].str());
+            m_Env[name] = value;
+        }
+    }
+
+}
+
 PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForProcess)
 {
     PROCESS_INFORMATION processInformation;
@@ -86,14 +208,35 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     memset(&processInformation, 0, sizeof(processInformation));
     memset(&startupInfo, 0, sizeof(startupInfo));
     startupInfo.cb = sizeof(startupInfo);
-    if (m_StdOutErrHandle != INVALID_HANDLE_VALUE) {
+    if (m_StdOutHandle != INVALID_HANDLE_VALUE) {
         startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+        startupInfo.hStdOutput = m_StdOutHandle;
         startupInfo.hStdInput = NULL;
-        startupInfo.hStdError = m_StdOutErrHandle;
-        startupInfo.hStdOutput = m_StdOutErrHandle;
+    }
+
+    if (m_StdErrHandle != INVALID_HANDLE_VALUE) {
+        startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+        startupInfo.hStdError  = m_StdErrHandle;
+        startupInfo.hStdInput = NULL;
     }
 
     DWORD dwCreationFlags = CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
+
+    // Read the environment every time we start
+
+    if (!m_EnvironmentFiles.empty() ||
+        !m_EnvironmentFilesPS.empty())
+    {
+        GetCurrentEnv();
+        for (auto envFile : m_EnvironmentFiles)
+        {
+            LoadEnvVarsFromFile(envFile);
+        }
+        for (auto envFile : m_EnvironmentFilesPS)
+        {
+            LoadPShellEnvVarsFromFile(envFile);
+        }
+    }
 
     LPVOID lpEnv = NULL;
     if (!m_envBuf.empty())
@@ -148,18 +291,69 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 {
     m_IsStopping = FALSE;
 
+logfile << L"start " << m_ServiceName << std::endl;
+
+for (DWORD i = 0; i < dwArgc; i++) {
+   logfile << L"St1." << i << L" argv = " << lpszArgv[i] << std::endl;
+}
+
+    // If files before exist, bail.
+    for (auto before : this->m_FilesBefore) {
+        logfile << L"before file " << before << std::endl;
+
+        wstring path = SYSTEMD_ACTIVE_UNIT_DIRECTORY;
+        path.append(before);
+        wifstream wifs(path);
+        if (wifs.is_open()) {
+            logfile << L"before file " << before << " is present, so don't run" << std::endl;
+            wifs.close();
+            throw exception("Before file is present, service not started");
+            return;
+        }
+    }
+
+for (auto before : this->m_ServicesBefore) {
+   logfile << L"before service" << before << std::endl;
+}
+
+    for (auto after : this->m_FilesAfter) {
+        logfile << L"after file " << after << std::endl;
+
+        // If files after do not exist, bail.
+        wstring path = SYSTEMD_ACTIVE_UNIT_DIRECTORY;
+        path.append(after);
+        wifstream wifs(path);
+        if (!wifs.is_open()) {
+            logfile << L"after file " << after << " is not present, so don't run" << std::endl;
+            throw exception("After file is not present, service not started");
+            return;
+        }
+        wifs.close();
+    }
+
+
+for (auto after : this->m_ServicesAfter) {
+   logfile << L"after service" << after << std::endl;
+}
+
     if (!m_ExecStartPreCmdLine.empty())
     {
         wostringstream os;
-        os << L"Running ExecStartPre command: " << m_ExecStartPreCmdLine;
+        os << L"Running ExecStartPre command: " << m_ExecStartPreCmdLine.c_str();
+logfile << L"execstartpre " <<  m_ExecStartPreCmdLine.c_str()  << std::endl;
         WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
         StartProcess(m_ExecStartPreCmdLine.c_str(), true);
     }
 
     wostringstream os;
-    os << L"Starting service: " << m_CmdLine;
+    os << L"Starting service: " << m_ServiceName;
+logfile << os.str() << std::endl;
+
+logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
+
     WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
-    auto processInformation = StartProcess(m_CmdLine.c_str());
+
+    auto processInformation = StartProcess(m_ExecStartCmdLine.c_str());
 
     m_dwProcessId = processInformation.dwProcessId;
     m_hProcess = processInformation.hProcess;
@@ -174,6 +368,16 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
     throw GetLastError();
     }
     */
+
+    if (!m_ExecStartPostCmdLine.empty())
+    {
+        wostringstream os;
+        os << L"Running ExecStartPost command: " << m_ExecStartPostCmdLine.c_str();
+logfile << os.str() << std::endl;
+        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
+        StartProcess(m_ExecStartPostCmdLine.c_str(), true);
+    }
+
 }
 
 DWORD WINAPI CWrapperService::WaitForProcessThread(LPVOID lpParam)
@@ -237,6 +441,16 @@ void CWrapperService::OnStop()
     WriteEventLogEntry(L"Stopping service", EVENTLOG_INFORMATION_TYPE);
 
     m_IsStopping = TRUE;
+logfile << L"stopping service " << m_ServiceName.c_str() << std::endl;
+
+    if (!m_ExecStopCmdLine.empty())
+    {
+        wostringstream os;
+        os << L"Running ExecStop command: " << m_ExecStopCmdLine.c_str();
+logfile << os.str() << std::endl;
+        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
+        StartProcess(m_ExecStopCmdLine.c_str(), true);
+    }
 
 /*
     if(!::GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0))
@@ -245,6 +459,16 @@ void CWrapperService::OnStop()
     if(::WaitForSingleObject(m_hProcess, MAX_WAIT_CHILD_PROC) != WAIT_OBJECT_0)
 */
     KillProcessTree(m_dwProcessId);
+
+    if (!m_ExecStopPostCmdLine.empty())
+    {
+        wostringstream os;
+        os << L"Running ExecStopPost command: " << m_ExecStopPostCmdLine.c_str();
+logfile << os.str() << std::endl;
+        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
+        StartProcess(m_ExecStopPostCmdLine.c_str(), true);
+    }
+
 
     ::CloseHandle(m_hProcess);
     m_hProcess = NULL;
