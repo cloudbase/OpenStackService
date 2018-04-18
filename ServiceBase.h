@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <fstream>
 #include <windows.h>
 
 #define MAX_SVC_NAME 256
@@ -88,6 +89,8 @@ protected:
     void WriteErrorLogEntry(PWSTR pszFunction,
         DWORD dwError = GetLastError());
 
+protected:
+    std::wofstream logfile;
 private:
 
     // Entry point for the service. It registers the handler function for the
@@ -121,4 +124,5 @@ private:
 
     // The service status handle
     SERVICE_STATUS_HANDLE m_statusHandle;
+
 };

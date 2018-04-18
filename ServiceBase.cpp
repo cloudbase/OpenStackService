@@ -18,6 +18,7 @@
 \***************************************************************************/
 
 #pragma region Includes
+#include <ios>
 #include "ServiceBase.h"
 #include <assert.h>
 #include <strsafe.h>
@@ -74,6 +75,7 @@ BOOL CServiceBase::Run(CServiceBase &service)
 void WINAPI CServiceBase::ServiceMain(DWORD dwArgc, PWSTR *pszArgv)
 {
     assert(s_service != NULL);
+
 
     // Register the handler function for the service
     s_service->m_statusHandle = RegisterServiceCtrlHandler(
@@ -174,6 +176,9 @@ CServiceBase::CServiceBase(LPCWSTR pszServiceName,
     m_status.dwServiceSpecificExitCode = 0;
     m_status.dwCheckPoint = 0;
     m_status.dwWaitHint = 0;
+
+    this->logfile.open("c:\\tmp\\mylog", std::ios_base::out | std::ios_base::app );
+    this->logfile << L"opened log file" << std::endl;
 }
 
 //
@@ -203,6 +208,7 @@ CServiceBase::~CServiceBase(void)
 //
 void CServiceBase::Start(DWORD dwArgc, PWSTR *pszArgv)
 {
+    logfile << L"Start" << std::endl;
     try
     {
         // Tell SCM that the service is starting.
@@ -218,14 +224,24 @@ void CServiceBase::Start(DWORD dwArgc, PWSTR *pszArgv)
     {
         // Log the error.
         WriteErrorLogEntry(L"Service Start", dwError);
+    logfile << L"Start failed*2 " << std::endl;
 
         // Set the service status to be stopped.
         SetServiceStatus(SERVICE_STOPPED, dwError);
     }
-    catch (...)
+    catch (const std::exception &e)
     {
         // Log the error.
         WriteEventLogEntry(L"Service failed to start.", EVENTLOG_ERROR_TYPE);
+
+    logfile << L"Start failed " << e.what() << std::endl;
+
+        // Set the service status to be stopped.
+        SetServiceStatus(SERVICE_STOPPED);
+    }
+    catch (...) {
+        WriteEventLogEntry(L"Service failed to start.", EVENTLOG_ERROR_TYPE);
+    logfile << L"Start failed reason unknown" << std::endl;
 
         // Set the service status to be stopped.
         SetServiceStatus(SERVICE_STOPPED);
