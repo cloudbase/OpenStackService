@@ -20,6 +20,7 @@ under the License.
 #include <string>
 #include <map>
 #include <vector>
+#include "journalstream.h"
 #include "ServiceBase.h"
 
 typedef std::map<std::wstring, std::wstring> EnvMap;
@@ -37,24 +38,6 @@ public:
        SERVICE_TYPE_IDLE
     };
 
-   // StandardOut and StandardError are specified as type and maybe name
-   // most of these will have significant differences in their semantics from unix/linux.
-   enum OUTPUT_TYPE {
-       OUTPUT_TYPE_INVALID,
-       OUTPUT_TYPE_INHERIT,
-       OUTPUT_TYPE_NULL,
-       OUTPUT_TYPE_TTY,
-       OUTPUT_TYPE_JOURNAL,
-       OUTPUT_TYPE_SYSLOG,
-       OUTPUT_TYPE_KMSG,
-       OUTPUT_TYPE_JOURNAL_PLUS_CONSOLE,
-       OUTPUT_TYPE_SYSLOG_PLUS_CONSOLE,
-       OUTPUT_TYPE_KMSG_PLUS_CONSOLE,
-       OUTPUT_TYPE_FILE,   // requires a path
-       OUTPUT_TYPE_SOCKET,
-       OUTPUT_TYPE_FD      // requires a name
-    };
-
     // The parameter list has gotten very long. This way we have a packet of params
     // with defaults. Since C++ does not have named parameters this allows use to init some
     // and define others
@@ -69,15 +52,12 @@ public:
         LPCWSTR szExecStop;
         LPCWSTR szExecStopPost;
         enum ServiceType serviceType;
-        BOOL   feOutputToEventLog;
-        BOOL   fErrorToEventLog;
-        BOOL   fOutputToFile;
-        BOOL   fErrorToFile;
-        HANDLE fStdOutHandle;
-        HANDLE fStdErrHandle;
         BOOL fCanStop;
         BOOL fCanShutdown;
         BOOL fCanPauseContinue;
+        std::wstring unitPath;
+        wojournalstream *stdErr;
+        wojournalstream *stdOut;
         std::vector<std::wstring> environmentFilesPS;
         std::vector<std::wstring> environmentFiles;
         std::vector<std::wstring> environmentVars;
@@ -96,12 +76,6 @@ public:
             szExecStop(NULL),
             szExecStopPost(NULL),
             serviceType(SERVICE_TYPE_SIMPLE),
-            feOutputToEventLog(FALSE),
-            fErrorToEventLog  (FALSE),
-            fOutputToFile     (TRUE),
-            fErrorToFile      (FALSE),
-            fStdOutHandle     (INVALID_HANDLE_VALUE),
-            fStdErrHandle     (INVALID_HANDLE_VALUE),
             fCanStop(TRUE),
             fCanShutdown(TRUE),
             fCanPauseContinue(FALSE) {  };
@@ -124,6 +98,8 @@ private:
 
     static DWORD WINAPI WaitForProcessThread(LPVOID lpParam);
     static void WINAPI KillProcessTree(DWORD dwProcId);
+    static enum OUTPUT_TYPE StrToOutputType( std::wstring ws, std::wstring *path );
+
     PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess = false);
 
     std::wstring m_ServiceName;
@@ -144,6 +120,7 @@ private:
     std::vector<std::wstring> m_EnvironmentFiles;    // Evaluated each time the service is started.
     std::vector<std::wstring> m_EnvironmentFilesPS;  // Evaluated each time the service is started.
     std::vector<std::wstring> m_EnvironmentVars;
+    std::wstring m_unitPath;
     std::wstring m_envBuf;
     EnvMap m_Env;
 
@@ -151,7 +128,7 @@ private:
     HANDLE m_hProcess;
     HANDLE m_WaitForProcessThread;
     enum ServiceType m_ServiceType;
-    HANDLE m_StdOutHandle;
-    HANDLE m_StdErrHandle;
+    wojournalstream *m_StdErr;
+    wojournalstream *m_StdOut;
     volatile BOOL m_IsStopping;
 };
