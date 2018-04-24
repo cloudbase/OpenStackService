@@ -21,6 +21,7 @@ under the License.
 #include <boost/program_options.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string/join.hpp>
+#include <ostream>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -36,6 +37,7 @@ using namespace boost::program_options;
 
 struct CLIArgs
 {
+    wstring unitPath;
     vector<wstring> environmentFiles;
     vector<wstring> environmentFilesPShell;
     vector<wstring> environmentVars;
@@ -46,7 +48,7 @@ struct CLIArgs
     wstring execStopPost;
     wstring serviceName;
     vector<wstring> additionalArgs;
-    wstring logFile;
+    wstring logFilePath;    
     wstring serviceUnit;
     wstring shellCmd_pre;
     wstring shellCmd_post;
@@ -57,38 +59,62 @@ struct CLIArgs
     vector<wstring> before_services;
     vector<wstring> after_files;
     vector<wstring> after_services;
+    wstring stderrOutputType;
+    wstring stderrFilePath;
+    wstring stdoutOutputType;
+    wstring stdoutFilePath;
 };
 
 CLIArgs ParseArgs(int argc, wchar_t *argv[]);
 EnvMap LoadEnvVarsFromFile(const wstring& path);
 EnvMap GetCurrentEnv();
 
-wofstream logfile("c:/tmp/some-log", std::ios_base::out | std::ios_base::app);
+std::wstring DEFAULT_LOG_DIRECTORY         = L"C:\\var\\log\\";
+std::wstring DEFAULT_LOG_PATH      = L"c:\\var\\log\\system.log";
 
+//wofstream g_logfile("c:\\var\\log\\openstackservice.log", std::ios_base::out | std::ios_base::app);
+
+class wojournalstream unit_stderr;
+class wojournalstream unit_stdout;
+class wojournalstream unit_log;
+
+class wojournalstream *logfile = &unit_log;
 
 wstring DEFAULT_SHELL_PRE  =  L"powershell -command \"& {";
 wstring DEFAULT_SHELL_POST =  L" } \" ";
 wstring DEFAULT_START_ACTION = L"Write-Host \"No Start Action\" ";
 
+CWrapperService::ServiceParams params;
+
+
+static void EscapeForPowershell(std::wstring &cmdline)
+
+{
+    for ( size_t start = 0; start != std::string::npos; ) {
+        size_t end = cmdline.find(L'\"', start);
+        if (end != std::string::npos) {
+             cmdline.insert(end,  L"\\`");
+             end += 3;
+        }
+        start = end;
+    }
+
+    for ( size_t start = 0; start != std::string::npos; ) {
+        size_t end = cmdline.find(L'&', start);
+        if (end != std::string::npos) {
+             cmdline.insert(end,  L"\\`");
+             end += 3;
+        }
+        start = end;
+    }
+
+}
+
+
 CLIArgs ParseArgs(int argc, wchar_t *argv[])
 {
     CLIArgs args;
-    options_description desc{ "Options" };
-    desc.add_options()
-        ("service-unit", wvalue<wstring>(), "Service uses the service unit file in %SystemDrive%/SystemD/system" )
-        ("log-file,l", wvalue<wstring>(), "Log file containing  the redirected STD OUT and ERR of the child process")
-        ("environment-file,e", wvalue<vector<wstring>>(), "Environment file")
-        ("environment-file-pshell", wvalue<vector<wstring>>(), "Powershell environment files")
-        ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
-        ("service-name", wvalue<wstring>(), "Service name");
-
-    variables_map vm;
-    auto parsed = wcommand_line_parser(argc, argv)
-                .options(desc).allow_unregistered().run();
-    store(parsed, vm);
-    auto additionalArgs = collect_unrecognized(parsed.options, include_positional);
-    notify(vm);
-
+    
     variables_map service_unit_options;
     options_description config{ "service-unit_options" };
     config.add_options()
@@ -105,24 +131,94 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
         ("Service.ExecStartPost", wvalue<vector<wstring>>(), "Execute after starting service")
         ("Service.ExecStop", wvalue<vector<wstring>>(), "Execute commands at when stopping service")
         ("Service.ExecStopPost", wvalue<vector<wstring>>(), "Execute after stopping service")
-        ("Service.BusName", wvalue<wstring>(), "Systemd dbus name. Used only for resolving service type") ;
+        ("Service.StandardOutput", wvalue<wstring>(), "standard out")
+        ("Service.StandardError", wvalue<wstring>(), "standard error")
+        ("Service.BusName", wvalue<wstring>(), "Systemd dbus name. Used only for resolving service type");
 
-logfile << L"check for service unit" << std::endl;
+
+    options_description desc{ "Options" };
+    desc.add_options()
+        ("service-unit", wvalue<wstring>(), "Service uses the service unit file in %SystemDrive%/etc/SystemD/active" )
+        ("log-file,l", wvalue<wstring>(), "Log file containing  the redirected STD OUT and ERR of the child process")
+        ("environment-file,e", wvalue<vector<wstring>>(), "Environment file")
+        ("environment-file-pshell", wvalue<vector<wstring>>(), "Powershell environment files")
+        ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
+        ("service-name", wvalue<wstring>(), "Service name");
+
+    variables_map vm;
+    auto parsed = wcommand_line_parser(argc, argv)
+                .options(desc).allow_unregistered().run();
+    store(parsed, vm);
+    auto additionalArgs = collect_unrecognized(parsed.options, include_positional);
+    notify(vm);
+    
+*logfile << L"check for service unit" << std::endl;
     if (vm.count("service-unit")) {
-        args.serviceUnit = vm["service-unit"].as<wstring>();
-logfile << L"has service unit " << args.serviceUnit.c_str() << std::endl;
-        std::wifstream service_unit_file(args.serviceUnit.c_str());
-logfile << L"opened service unit " << std::endl;
+        args.unitPath = vm["service-unit"].as<wstring>();
+        std::wifstream service_unit_file(args.unitPath.c_str());
+*logfile << L"opened service unit " << std::endl;
         auto config_parsed = parse_config_file(service_unit_file, config, true);
         store(config_parsed, service_unit_options);
         notify(service_unit_options);
 
+        for(unsigned i = 0; i < args.unitPath.length(); i++ ) {
+            if (args.unitPath[i] == '\\') {
+                args.unitPath[i] = '/';
+            }
+        }
+        int start_index = args.unitPath.rfind('/');
+*logfile << L"start index = " << start_index << std::endl;
+        args.serviceUnit = args.unitPath.substr(start_index+1, args.unitPath.length() - start_index);
+*logfile << L"has service unit " << args.serviceUnit.c_str() << std::endl;
+
+    *logfile << L"unit path " << args.unitPath << std::endl ;
 for (auto elem : service_unit_options) {
-    logfile << "elem_name ";
-    logfile << std::wstring(elem.first.begin(), elem.first.end()) << std::endl;
+    *logfile << "elem_name ";
+    *logfile << std::wstring(elem.first.begin(), elem.first.end()) << std::endl;
 }
 
     }
+    else {
+        // 2do: Else derive the service name from the execStart executable
+        // else give up
+    }
+
+    args.stderrOutputType = L"journal";
+*logfile << L"service stdoutput = " << service_unit_options["Service.StandardOutput"].as<wstring>();
+    if ( service_unit_options.count("Service.StandardOutput")) {
+        args.stdoutOutputType = service_unit_options["Service.StandardOutput"].as<wstring>();
+ 
+        if (args.stdoutOutputType.compare(0, 5, L"file:", 5)) {
+            args.stdoutFilePath = args.stdoutOutputType.substr(0, args.stdoutOutputType.find_first_of(':')+1);
+        }
+    }
+    if (args.stdoutFilePath.empty()) {
+        args.stdoutFilePath = DEFAULT_LOG_DIRECTORY;
+        args.stdoutFilePath.append(args.serviceUnit);
+        args.stdoutFilePath.append(L".stdout.log");
+    }
+ 
+*logfile << L"open stdoutFile outputtype = " << args.stdoutOutputType << std::endl;
+*logfile << L"open stdoutFile Path = " << args.stdoutFilePath << std::endl;
+
+    unit_stdout.open(args.stdoutOutputType, args.stdoutFilePath);
+
+    args.stderrOutputType = L"journal";
+    if ( service_unit_options.count("Service.StandardError")) {
+        args.stderrOutputType = service_unit_options["Service.StandardOutput"].as<wstring>();
+ 
+        if (args.stderrOutputType.compare(0, 5, L"file:", 5)) {
+            args.stderrFilePath = args.stderrOutputType.substr(0, args.stderrOutputType.find_first_of(':')+1);
+        }
+    }
+    if (args.stderrFilePath.empty()) {
+        args.stderrFilePath = DEFAULT_LOG_DIRECTORY;
+        args.stderrFilePath.append(args.serviceUnit);
+        args.stderrFilePath.append(L".stderr.log");
+    }
+
+*logfile << "open stderrFile Path = " << args.stderrFilePath.c_str() << std::endl;
+    unit_stderr.open(args.stderrOutputType, args.stderrFilePath);
 
     if (vm.count("environment-file")) {
         args.environmentFiles = vm["environment-file"].as<vector<wstring>>();
@@ -132,21 +228,24 @@ for (auto elem : service_unit_options) {
         args.environmentFilesPShell = vm["environment-file-pshell"].as<vector<wstring>>();
     }
 
-logfile << "p1" << std::endl;
+*logfile << "p1" << std::endl;
     if (vm.count("log-file")) {
-        args.logFile = vm["log-file"].as<wstring>();
-        args.logFile.erase(remove( args.logFile.begin(), args.logFile.end(), '\"' ), args.logFile.end());
-        args.logFile.erase(remove( args.logFile.begin(), args.logFile.end(), '\'' ), args.logFile.end());
+        args.logFilePath = vm["log-file"].as<wstring>();
+        args.logFilePath.erase(remove( args.logFilePath.begin(), args.logFilePath.end(), '\"' ), args.logFilePath.end());
+        args.logFilePath.erase(remove( args.logFilePath.begin(), args.logFilePath.end(), '\'' ), args.logFilePath.end());
+*logfile << "p1.1 open log " << args.logFilePath << std::endl;
+        unit_log.open(L"file:", args.logFilePath);
+        logfile = &unit_log;
     }
 
-logfile << "p2" << std::endl;
+*logfile << "p2" << std::endl;
     if (vm.count("service-name")) {
         args.serviceName = vm["service-name"].as<wstring>();
         args.serviceName.erase(remove( args.serviceName.begin(), args.serviceName.end(), '\"' ), args.serviceName.end());
         args.serviceName.erase(remove( args.serviceName.begin(), args.serviceName.end(), '\'' ), args.serviceName.end());
     }
 
-logfile << "p3" << std::endl;
+*logfile << "p3" << std::endl;
     if (!additionalArgs.empty())
     {
         if (args.serviceName.empty()) {
@@ -155,7 +254,7 @@ logfile << "p3" << std::endl;
         additionalArgs = vector<wstring>(additionalArgs.begin(), additionalArgs.end());
     }
 
-logfile << "p4" << std::endl;
+*logfile << "p4" << std::endl;
 
     if (service_unit_options.count("Service.Type")) {
 
@@ -178,7 +277,7 @@ logfile << "p4" << std::endl;
         else if (service_unit_options["Service.Type"].as<std::wstring>().compare(L"idle") == 0) {
             args.serviceType = CWrapperService::SERVICE_TYPE_IDLE;
         }
-logfile << "p4.1 " << args.serviceType << std::endl;
+*logfile << "p4.1 " << args.serviceType << std::endl;
     }
     else {
 
@@ -227,17 +326,15 @@ logfile << "p4.1 " << args.serviceType << std::endl;
         // Sort into service and non service members. They require different code to check
         std::vector<std::wstring> wsv = service_unit_options["Unit.After"].as<std::vector<std::wstring>>();
 
-logfile << "p4.4 after count = " << wsv.size() << std::endl;
-for (auto ws:wsv) {
-}
+*logfile << "p4.4 after count = " << wsv.size() << std::endl;
+
         for (auto ws: wsv) {
             if (ws.rfind(L".service") != std::string::npos ) {
                 args.after_services.push_back(ws);
-logfile << L"p4.5 after service  = " << ws << std::endl;
+*logfile << L"p4.5 after service  = " << ws << std::endl;
             }
             else if (ws.rfind(L".target") != std::string::npos ) {
                 args.after_files.push_back(ws);
-logfile << L"p4.6 after file  = " << ws << std::endl;
             }
         }
     }
@@ -281,7 +378,7 @@ logfile << L"p4.6 after file  = " << ws << std::endl;
         args.environmentFilesPShell = service_unit_options["Service.EnvironmentFilesPS"].as<vector<wstring>>();
     }
 
-logfile << "p5" << std::endl;
+*logfile << "p5" << std::endl;
     if (service_unit_options.count("Service.ExecStartPre")) {
         vector<wstring> ws_vector = service_unit_options["Service.ExecStartPre"].as<vector<wstring>>();
         wstring cmdline;
@@ -289,10 +386,13 @@ logfile << "p5" << std::endl;
             cmdline.append(ws);
             cmdline.append(L" ; ");
         }
+
+        EscapeForPowershell(cmdline);
         args.execStartPre = cmdline;
+*logfile << "p5.1 exec start pre cmdline = " << cmdline << std::endl;
     }
 
-logfile << "p6" << std::endl;
+*logfile << "p6" << std::endl;
 
     if (service_unit_options.count("Service.ExecStart")) {
         vector<wstring> ws_vector = service_unit_options["Service.ExecStart"].as<vector<wstring>>();
@@ -301,8 +401,9 @@ logfile << "p6" << std::endl;
             cmdline.append(ws);
             cmdline.append(L" ; ");
         }
+        EscapeForPowershell(cmdline);
         args.execStart = cmdline;
-logfile << "p6.1 execstart = " << cmdline << std::endl;
+*logfile << "p6.1 execstart = " << cmdline << std::endl;
     }
     else {
         args.execStart = DEFAULT_START_ACTION;
@@ -315,6 +416,8 @@ logfile << "p6.1 execstart = " << cmdline << std::endl;
             cmdline.append(ws);
             cmdline.append(L" ; ");
         }
+        EscapeForPowershell(cmdline);
+*logfile << "p6.2 execstartpost = " << cmdline << std::endl;
         args.execStartPost = cmdline;
     }
 
@@ -325,7 +428,7 @@ logfile << "p6.1 execstart = " << cmdline << std::endl;
             cmdline.append(ws);
             cmdline.append(L" ; ");
         }
-logfile << "p6.1 execstop = " << cmdline << std::endl;
+*logfile << "p6.1 execstop = " << cmdline << std::endl;
         args.execStop = cmdline;
     }
 
@@ -339,13 +442,13 @@ logfile << "p6.1 execstop = " << cmdline << std::endl;
         args.execStopPost = cmdline;
     }
 
-logfile << "p7" << std::endl;
-logfile << L"service name " << args.serviceName << std::endl;
+*logfile << "p7" << std::endl;
+*logfile << L"service name " << args.serviceName << std::endl;
 for (auto arg: additionalArgs ) {
-logfile << L"additionalArgs " << arg << std::endl;
+*logfile << L"additionalArgs " << arg << std::endl;
 }
 
-logfile << "p8" << std::endl;
+*logfile << "p8" << std::endl;
     if(args.serviceName.empty())
         throw exception("Service name not provided");
     
@@ -356,38 +459,18 @@ logfile << "p8" << std::endl;
 
 int wmain(int argc, wchar_t *argv[])
 {
-    HANDLE hLogFile = INVALID_HANDLE_VALUE;
-    CWrapperService::ServiceParams params;
     try
     {
         EnvMap env;
+
+        unit_log.open(L"file:", L"c:\\var\\log\\openstackservice.log");
         auto args = ParseArgs(argc, argv);
 
-logfile << args.execStart << std::endl;
-       
-logfile << L"log file name " << args.logFile.c_str() << std::endl;
 
-        if (!args.logFile.empty())
-        {
-            SECURITY_ATTRIBUTES sa;
-            sa.nLength = sizeof(sa);
-            sa.lpSecurityDescriptor = NULL;
-            sa.bInheritHandle = TRUE;
-            hLogFile = CreateFile(args.logFile.c_str(),
-                                FILE_APPEND_DATA,
-                                FILE_READ_DATA | FILE_WRITE_DATA,
-                                &sa,
-                                OPEN_ALWAYS,
-                                FILE_ATTRIBUTE_NORMAL,
-                                NULL);
-            if (hLogFile == INVALID_HANDLE_VALUE)
-            {
-                char msg[100];
-                sprintf_s(msg, "Failed to create log file w/err 0x%08lx", GetLastError());
-                throw exception(msg);
-            }
-        }
- 
+*logfile << args.execStart << std::endl;
+       
+*logfile << L"log file name " << args.logFilePath.c_str() << std::endl;
+
         params.szServiceName  = args.serviceName.c_str();
         params.szShellCmdPre  = args.shellCmd_pre.c_str();
         params.szShellCmdPost = args.shellCmd_post.c_str();
@@ -405,12 +488,8 @@ logfile << L"log file name " << args.logFile.c_str() << std::endl;
         params.services_after     = args.after_services;
         params.files_requisite    = args.requisite_files;
         params.services_requisite = args.requisite_services;
-        params.feOutputToEventLog = FALSE;
-        params.fErrorToEventLog   = FALSE;
-        params.fOutputToFile  = TRUE;
-        params.fErrorToFile   = TRUE;
-        params.fStdOutHandle  = hLogFile;
-        params.fStdErrHandle  = hLogFile;
+        params.stdErr         = &unit_stderr;
+        params.stdOut         = &unit_stdout;
         params.fCanStop       = TRUE;
         params.fCanShutdown   = TRUE;
         params.fCanPauseContinue = FALSE;
@@ -420,17 +499,14 @@ logfile << L"log file name " << args.logFile.c_str() << std::endl;
         {
             char msg[100];
             sprintf_s(msg, "Service failed to run w/err 0x%08lx", GetLastError());
-logfile << msg << '\n';
-            CloseHandle(hLogFile);
+*logfile << msg << '\n';
             throw exception(msg);
         }
-        CloseHandle(hLogFile);
         return 0;
     }
     catch (exception &ex)
     {
-logfile << ex.what() << '\n';
-        CloseHandle(hLogFile);
+*logfile << ex.what() << '\n';
         return -1;
     }
 }

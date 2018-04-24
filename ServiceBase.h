@@ -21,6 +21,7 @@
 
 #include <fstream>
 #include <windows.h>
+#include "journalstream.h"
 
 #define MAX_SVC_NAME 256
 
@@ -39,6 +40,7 @@ public:
     // service can be stopped, paused and continued, or be notified when
     // system shutdown occurs.
     CServiceBase(LPCWSTR pszServiceName,
+        class wojournalstream *logfile, 
         BOOL fCanStop = TRUE,
         BOOL fCanShutdown = TRUE,
         BOOL fCanPauseContinue = FALSE);
@@ -90,7 +92,7 @@ protected:
         DWORD dwError = GetLastError());
 
 protected:
-    std::wofstream logfile;
+    wojournalstream *logfile;
 private:
 
     // Entry point for the service. It registers the handler function for the

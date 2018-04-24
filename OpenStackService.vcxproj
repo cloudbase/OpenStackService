@@ -263,11 +263,13 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="journalstream.cpp" />
     <ClCompile Include="Program.cpp" />
     <ClCompile Include="OpenStackService.cpp" />
     <ClCompile Include="ServiceBase.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="journalstream.h" />
     <ClInclude Include="OpenStackService.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="ServiceBase.h" />

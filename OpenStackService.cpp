@@ -34,10 +34,11 @@ under the License.
 #define MAX_WAIT_CHILD_PROC (5 * 1000)
 
 using namespace std;
-std::wstring SYSTEMD_ACTIVE_UNIT_DIRECTORY = L"c:\\SystemD\\system\\";
+
 
 CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
                                  : CServiceBase(params.szServiceName, 
+                                                params.stdOut,
                                                 params.fCanStop, 
                                                 params.fCanShutdown,
                                                 params.fCanPauseContinue)
@@ -72,20 +73,6 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
         m_ExecStopPostCmdLine.append(params.szShellCmdPost);
     }
 
-    if (params.fStdOutHandle != INVALID_HANDLE_VALUE) {
-        m_StdOutHandle = params.fStdOutHandle;
-    }
-    else {
-        m_StdOutHandle = INVALID_HANDLE_VALUE;
-    }
-
-    if (params.fStdErrHandle != INVALID_HANDLE_VALUE) {
-        m_StdErrHandle = params.fStdErrHandle;
-    }
-    else {
-        m_StdErrHandle = INVALID_HANDLE_VALUE;
-    }
-   
     if (!params.files_before.empty()) {
         m_FilesBefore = params.files_before;
     }
@@ -118,7 +105,18 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
         m_EnvironmentVars = params.environmentVars;
     }
 
+    if (!params.unitPath.empty()) {
+        m_unitPath = params.unitPath;
+    }
+    else {
+        // If not defined, etc expect it is the systemd active service diirectory
+        m_unitPath = L"c:\\etc\\SystemD\\active\\";
+    }
+
     m_ServiceName = params.szServiceName;
+
+    m_StdErr = params.stdErr;
+    m_StdOut = params.stdOut;
 
     m_WaitForProcessThread = NULL;
     m_dwProcessId = 0;
@@ -141,6 +139,58 @@ CWrapperService::~CWrapperService(void)
         m_WaitForProcessThread = NULL;
     }
 }
+
+
+enum OUTPUT_TYPE CWrapperService::StrToOutputType( std::wstring val, std::wstring *path )
+
+{
+    if (val.compare(L"inherit") == 0) {
+        return OUTPUT_TYPE_INHERIT;
+    }
+    else if (val.compare(L"null") == 0) {
+        return OUTPUT_TYPE_NULL;
+    }
+    else if (val.compare(L"tty") == 0) {
+        return OUTPUT_TYPE_TTY;
+    }
+    else if (val.compare(L"journal") == 0) {
+        return OUTPUT_TYPE_JOURNAL;
+    }
+    else if (val.compare(L"syslog") == 0) {
+        return OUTPUT_TYPE_SYSLOG;
+    }
+    else if (val.compare(L"kmsg") == 0) {
+        return OUTPUT_TYPE_KMSG;
+    }
+    else if (val.compare(L"journal+console") == 0) {
+        return OUTPUT_TYPE_JOURNAL_PLUS_CONSOLE;
+    }
+    else if (val.compare(L"syslog+console") == 0) {
+        return OUTPUT_TYPE_SYSLOG_PLUS_CONSOLE;
+    }
+    else if (val.compare(L"kmsg+console") == 0) {
+        return OUTPUT_TYPE_KMSG_PLUS_CONSOLE;
+    }
+    else if (val.compare(0, 5, L"file:path") == 0) {
+        if (path != NULL ) {
+            *path = val.substr(0, val.find_first_of(':')+1);
+        }
+        return OUTPUT_TYPE_FILE;
+    }
+    else if (val.compare(L"socket") == 0) {
+        return OUTPUT_TYPE_SOCKET;
+    }
+    else if (val.compare(0, 3, L"fd:name. ") == 0) {
+        if (path != NULL ) {
+            *path = val.substr(0, val.find_first_of(':')+1);
+        }
+        return OUTPUT_TYPE_FD;
+    }
+    else {
+        return OUTPUT_TYPE_INVALID;
+    }
+}
+
 
 
 void CWrapperService::GetCurrentEnv()
@@ -208,15 +258,18 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     memset(&processInformation, 0, sizeof(processInformation));
     memset(&startupInfo, 0, sizeof(startupInfo));
     startupInfo.cb = sizeof(startupInfo);
-    if (m_StdOutHandle != INVALID_HANDLE_VALUE) {
+    if (m_StdOut->GetHandle() != INVALID_HANDLE_VALUE) {
         startupInfo.dwFlags |= STARTF_USESTDHANDLES;
-        startupInfo.hStdOutput = m_StdOutHandle;
+        startupInfo.hStdOutput = m_StdOut->GetHandle();
+*logfile << L"has stdout " << std::endl;
+
         startupInfo.hStdInput = NULL;
     }
 
-    if (m_StdErrHandle != INVALID_HANDLE_VALUE) {
+    if (m_StdErr->GetHandle() != INVALID_HANDLE_VALUE) {
         startupInfo.dwFlags |= STARTF_USESTDHANDLES;
-        startupInfo.hStdError  = m_StdErrHandle;
+        startupInfo.hStdError  = m_StdErr->GetHandle();
+*logfile << L"has stderr " << std::endl;
         startupInfo.hStdInput = NULL;
     }
 
@@ -255,7 +308,7 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     {
         DWORD err = GetLastError();
         wostringstream os;
-        os << L"Error " << hex << err << L" while spawning the process: " << cmdLine;
+        *logfile << L"Error " << hex << err << L" while spawning the process: " << cmdLine;
         WriteEventLogEntry(os.str().c_str(), EVENTLOG_ERROR_TYPE);
 
         string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
@@ -273,12 +326,13 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
         if (!result || exitCode)
         {
             wostringstream os;
-            if (!result)
-                os << L"GetExitCodeProcess failed";
-            else
-                os << L"Command \"" << cmdLine << L"\" failed with exit code: " << exitCode;
+            if (!result) {
+                *logfile << L"GetExitCodeProcess failed";
+            }
+            else {
+                *logfile << L"Command \"" << cmdLine << L"\" failed with exit code: " << exitCode;
+            }
 
-            WriteEventLogEntry(os.str().c_str(), EVENTLOG_ERROR_TYPE);
             string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
             throw exception(str.c_str());
         }
@@ -291,21 +345,17 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 {
     m_IsStopping = FALSE;
 
-logfile << L"start " << m_ServiceName << std::endl;
-
-for (DWORD i = 0; i < dwArgc; i++) {
-   logfile << L"St1." << i << L" argv = " << lpszArgv[i] << std::endl;
-}
+*logfile << L"start " << m_ServiceName << std::endl;
 
     // If files before exist, bail.
     for (auto before : this->m_FilesBefore) {
-        logfile << L"before file " << before << std::endl;
+        *logfile << L"before file " << before << std::endl;
 
-        wstring path = SYSTEMD_ACTIVE_UNIT_DIRECTORY;
+        wstring path = m_unitPath;
         path.append(before);
         wifstream wifs(path);
         if (wifs.is_open()) {
-            logfile << L"before file " << before << " is present, so don't run" << std::endl;
+            *logfile << L"before file " << before << " is present, so don't run" << std::endl;
             wifs.close();
             throw exception("Before file is present, service not started");
             return;
@@ -313,18 +363,18 @@ for (DWORD i = 0; i < dwArgc; i++) {
     }
 
 for (auto before : this->m_ServicesBefore) {
-   logfile << L"before service" << before << std::endl;
+   *logfile << L"before service" << before << std::endl;
 }
 
     for (auto after : this->m_FilesAfter) {
-        logfile << L"after file " << after << std::endl;
+        *logfile << L"after file " << after << std::endl;
 
         // If files after do not exist, bail.
-        wstring path = SYSTEMD_ACTIVE_UNIT_DIRECTORY;
+        wstring path = m_unitPath;
         path.append(after);
         wifstream wifs(path);
         if (!wifs.is_open()) {
-            logfile << L"after file " << after << " is not present, so don't run" << std::endl;
+            *logfile << L"after file " << after << " is not present, so don't run" << std::endl;
             throw exception("After file is not present, service not started");
             return;
         }
@@ -333,25 +383,20 @@ for (auto before : this->m_ServicesBefore) {
 
 
 for (auto after : this->m_ServicesAfter) {
-   logfile << L"after service" << after << std::endl;
+   *logfile << L"after service" << after << std::endl;
 }
 
     if (!m_ExecStartPreCmdLine.empty())
     {
         wostringstream os;
-        os << L"Running ExecStartPre command: " << m_ExecStartPreCmdLine.c_str();
-logfile << L"execstartpre " <<  m_ExecStartPreCmdLine.c_str()  << std::endl;
-        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
+        *logfile << L"Running ExecStartPre command: " << m_ExecStartPreCmdLine.c_str();
+*logfile << L"execstartpre " <<  m_ExecStartPreCmdLine.c_str()  << std::endl;
         StartProcess(m_ExecStartPreCmdLine.c_str(), true);
     }
 
-    wostringstream os;
-    os << L"Starting service: " << m_ServiceName;
-logfile << os.str() << std::endl;
+    *logfile << L"Starting service: " << m_ServiceName << std::endl;
 
-logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
-
-    WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
+*logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
 
     auto processInformation = StartProcess(m_ExecStartCmdLine.c_str());
 
@@ -373,7 +418,7 @@ logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
     {
         wostringstream os;
         os << L"Running ExecStartPost command: " << m_ExecStartPostCmdLine.c_str();
-logfile << os.str() << std::endl;
+*logfile << os.str() << std::endl;
         WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
         StartProcess(m_ExecStartPostCmdLine.c_str(), true);
     }
@@ -441,13 +486,13 @@ void CWrapperService::OnStop()
     WriteEventLogEntry(L"Stopping service", EVENTLOG_INFORMATION_TYPE);
 
     m_IsStopping = TRUE;
-logfile << L"stopping service " << m_ServiceName.c_str() << std::endl;
+*logfile << L"stopping service " << m_ServiceName.c_str() << std::endl;
 
     if (!m_ExecStopCmdLine.empty())
     {
         wostringstream os;
         os << L"Running ExecStop command: " << m_ExecStopCmdLine.c_str();
-logfile << os.str() << std::endl;
+*logfile << os.str() << std::endl;
         WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
         StartProcess(m_ExecStopCmdLine.c_str(), true);
     }
@@ -464,7 +509,7 @@ logfile << os.str() << std::endl;
     {
         wostringstream os;
         os << L"Running ExecStopPost command: " << m_ExecStopPostCmdLine.c_str();
-logfile << os.str() << std::endl;
+*logfile << os.str() << std::endl;
         WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
         StartProcess(m_ExecStopPostCmdLine.c_str(), true);
     }
