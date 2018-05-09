@@ -86,6 +86,7 @@ protected:
 
 private:
 
+
     // Special executable prefixes. See systemd.service
     // we make a mask because some chars may be used together
 

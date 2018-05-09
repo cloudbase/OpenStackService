@@ -36,6 +36,7 @@ under the License.
 using namespace std;
 
 
+
 // Generates flags mask and removes special executable prefix characters
 unsigned 
 CWrapperService::ProcessSpecialCharacters(std::wstring &ws)
@@ -86,7 +87,6 @@ CWrapperService::ProcessSpecialCharacters(std::wstring &ws)
 }
 
 
-
 CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
                                  : CServiceBase(params.szServiceName, 
                                                 params.stdOut,
@@ -94,6 +94,7 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
                                                 params.fCanShutdown,
                                                 params.fCanPauseContinue)
 {
+
     if (!params.execStartPre.empty()) {
         for (auto ws: params.execStartPre) {
 	    m_ExecStartPreFlags.push_back(ProcessSpecialCharacters(ws));
@@ -136,6 +137,7 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
             cmdline.append(params.szShellCmdPost);
             m_ExecStopPostCmdLine.push_back(cmdline);
         }
+
     }
 
     if (!params.files_before.empty()) {
@@ -261,6 +263,7 @@ enum OUTPUT_TYPE CWrapperService::StrToOutputType( std::wstring val, std::wstrin
 
 void CWrapperService::GetCurrentEnv()
 {
+
     wchar_t *tmpEnv = ::GetEnvironmentStringsW();
     LPCWSTR envPair = (LPCWSTR)tmpEnv;
     while (envPair[0])
@@ -279,9 +282,6 @@ void CWrapperService::GetCurrentEnv()
     }
     ::FreeEnvironmentStrings(tmpEnv);
 }
-
-
-
 
 void CWrapperService::LoadEnvVarsFromFile(const wstring& path)
 {
@@ -320,7 +320,9 @@ void CWrapperService::LoadPShellEnvVarsFromFile(const wstring& path)
 
 }
 
+
 PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForProcess, bool failOnError)
+
 {
     PROCESS_INFORMATION processInformation;
     STARTUPINFO startupInfo;
@@ -369,7 +371,6 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
         wostringstream os;
         os << L"Error " << err << L" while spawning the process: " << cmdLine << std::endl;
         *logfile << os.str();
-
         string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
         throw exception(str.c_str());
     }
@@ -411,7 +412,6 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
     }
 
     m_IsStopping = FALSE;
-
 
 *logfile << L"start " << m_ServiceName << std::endl;
 
@@ -484,21 +484,22 @@ for (auto after : this->m_ServicesAfter) {
         for( int i = 0;  i < m_ExecStartPreCmdLine.size(); i++ ) {
             auto ws = m_ExecStartPreCmdLine[i];
             *logfile << L"Running ExecStartPre command: " << ws.c_str();
-	    // to do, add special char processing
-	    try {
+	          // to do, add special char processing
+	          try {
                 StartProcess(ws.c_str(), true); 
-	    }
-	    catch(...) {
-	        if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
+	          }
+	          catch(...) {
+	             if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
                     *logfile << L"Error in ExecStartPre command: " << ws.c_str() << "exiting" << std::endl;
-		}
-	    }
+	        	   }
+	         }
         }
     }
 
     *logfile << L"Starting service: " << m_ServiceName << std::endl;
 
 *logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
+
 
     auto processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
 
@@ -516,11 +517,13 @@ for (auto after : this->m_ServicesAfter) {
         throw GetLastError();
     }
     */
+
 #endif
 
     if (!m_ExecStartPostCmdLine.empty())
     {
         wostringstream os;
+
         for( int i = 0;  i < m_ExecStartPostCmdLine.size(); i++ ) {
             auto ws = m_ExecStartPostCmdLine[i];
             os << L"Running ExecStartPost command: " << ws.c_str();
@@ -605,7 +608,6 @@ void CWrapperService::OnStop()
 
     m_IsStopping = TRUE;
 *logfile << L"stopping service " << m_ServiceName.c_str() << std::endl;
-
     if (!m_ExecStopCmdLine.empty())
     {
         wostringstream os;
@@ -620,6 +622,7 @@ void CWrapperService::OnStop()
     if (!m_ExecStopPostCmdLine.empty())
     {
         wostringstream os;
+
         for( auto ws: m_ExecStopPostCmdLine) {
             os << L"Running ExecStopPost command: " << ws.c_str();
             *logfile << os.str() << std::endl;

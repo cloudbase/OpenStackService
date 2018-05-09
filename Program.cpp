@@ -42,6 +42,7 @@ struct CLIArgs
     vector<wstring> environmentFiles;
     vector<wstring> environmentFilesPShell;
     vector<wstring> environmentVars;
+
     vector<wstring> execStartPre;
     wstring         execStart;
     vector<wstring> execStartPost;
@@ -81,6 +82,7 @@ class wojournalstream unit_log;
 
 class wojournalstream *logfile = &unit_log;
 
+
 //wstring DEFAULT_SHELL_PRE  =  L"powershell -command \"& {";
 wstring DEFAULT_SHELL_PRE  =  L"pwsh.exe -command \"& {";
 wstring DEFAULT_SHELL_POST =  L" } \" ";
@@ -118,6 +120,7 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     CLIArgs args;
     
     variables_map service_unit_options;
+
     options_description config{ "service-unit-options" };
     config.add_options()
         ("Unit.Description", value<string>(), "Description") 
@@ -130,6 +133,7 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
         ("Service.EnvironmentFile-PS", wvalue<vector<wstring>>(), "Environment files in powershell format" )
         ("Service.Environment", wvalue<vector<wstring>>(), "Environment Variable settings" )
         ("Service.ExecStartPre", wvalue<vector<wstring>>(), "Execute before starting service")
+
         ("Service.ExecStart", wvalue<wstring>(), "Execute commands at when starting service")
         ("Service.ExecStartPost", wvalue<vector<wstring>>(), "Execute after starting service")
         ("Service.ExecStop", wvalue<wstring>(), "Execute command when stopping service")
@@ -223,7 +227,6 @@ for (auto elem : service_unit_options) {
  
 *logfile << L"open stdoutFile outputtype = " << args.stdoutOutputType << std::endl;
 *logfile << L"open stdoutFile Path = " << args.stdoutFilePath << std::endl;
-
     unit_stdout.open(args.stdoutOutputType, args.stdoutFilePath);
 
     args.stderrOutputType = L"journal";
@@ -316,8 +319,8 @@ for (auto elem : service_unit_options) {
         }
     }
 
-*logfile << "p4.1 service type " << args.serviceType << std::endl;
 
+*logfile << "p4.1 service type " << args.serviceType << std::endl;
     if (service_unit_options.count("Unit.Requisite")) {
 
         // Sort into service and non service members. They require different code to check
@@ -406,6 +409,7 @@ for (auto elem : service_unit_options) {
 *logfile << "p5" << std::endl;
     if (service_unit_options.count("Service.ExecStartPre")) {
         vector<wstring> ws_vector = service_unit_options["Service.ExecStartPre"].as<vector<wstring>>();
+
         for (auto ws : ws_vector) {
            EscapeForPowershell(ws);
 *logfile << "p5.1 exec start pre cmdline = " << ws << std::endl;
@@ -416,6 +420,7 @@ for (auto elem : service_unit_options) {
 *logfile << "p6" << std::endl;
 
     if (service_unit_options.count("Service.ExecStart")) {
+
         args.execStart = service_unit_options["Service.ExecStart"].as<wstring>();
         EscapeForPowershell(args.execStart);
 *logfile << "p6.1 execstart = " << args.execStart << std::endl;
@@ -423,6 +428,7 @@ for (auto elem : service_unit_options) {
 
     if (service_unit_options.count("Service.ExecStartPost")) {
         vector<wstring> ws_vector = service_unit_options["Service.ExecStartPost"].as<vector<wstring>>();
+
         for (auto ws : ws_vector) {
             EscapeForPowershell(ws);
 *logfile << "p6.2 execstartpost = " << ws << std::endl;
@@ -470,12 +476,12 @@ int wmain(int argc, wchar_t *argv[])
         unit_log.open(L"file:", L"c:\\var\\log\\openstackservice.log");
         auto args = ParseArgs(argc, argv);
 
-
 *logfile << L"log file name " << args.logFilePath.c_str() << std::endl;
 
         params.szServiceName  = args.serviceName.c_str();
         params.szShellCmdPre  = args.shellCmd_pre.c_str();
         params.szShellCmdPost = args.shellCmd_post.c_str();
+
         params.execStartPre = args.execStartPre;
         params.execStart      = args.execStart;
         params.execStartPost  = args.execStartPost;
