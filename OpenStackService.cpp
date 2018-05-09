@@ -36,6 +36,57 @@ under the License.
 using namespace std;
 
 
+// Generates flags mask and removes special executable prefix characters
+unsigned 
+CWrapperService::ProcessSpecialCharacters(std::wstring &ws)
+
+{ unsigned mask = 0;
+
+    wchar_t spec_char = ws[0]; 
+    while (spec_char) {
+        switch(spec_char) {
+	case L'@':
+	    mask |= EXECFLAG_ARG0;
+            ws.erase(0, 1);
+	    spec_char = ws[0];
+	    break;
+	case L'-':
+	    mask |= EXECFLAG_IGNORE_FAIL;
+            ws.erase(0, 1);
+	    spec_char = ws[0];
+	    break;
+
+	case L'+':
+	    mask |= EXECFLAG_FULL_PRIVELEGE;
+            ws.erase(0, 1);
+	    spec_char = ws[0];
+	    if (spec_char == '!') {
+	        *logfile << L"Illegal combination of special execuatble chars +, ! and !! in commandline " << ws << std::endl;
+            }
+	    break;
+
+	case L'!':
+	    if (ws[1] == L'!') {
+	        mask |= EXECFLAG_AMBIENT_PRIVELEGE;
+                ws.erase(0, 2);
+            }
+	    else {
+	        mask |= EXECFLAG_ELEVATE_PRIVELEGE;
+                ws.erase(0, 2);
+            }
+	    spec_char = ws[0];
+	    break;
+
+	default:
+	     return mask;
+	}
+    }
+
+    return mask;
+}
+
+
+
 CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
                                  : CServiceBase(params.szServiceName, 
                                                 params.stdOut,
@@ -43,34 +94,48 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
                                                 params.fCanShutdown,
                                                 params.fCanPauseContinue)
 {
-    if (params.szExecStartPre) {
-        m_ExecStartPreCmdLine = params.szShellCmdPre;
-        m_ExecStartPreCmdLine.append(params.szExecStartPre);
-        m_ExecStartPreCmdLine.append(params.szShellCmdPost);
+    if (!params.execStartPre.empty()) {
+        for (auto ws: params.execStartPre) {
+	    m_ExecStartPreFlags.push_back(ProcessSpecialCharacters(ws));
+            wstring cmdline = params.szShellCmdPre;
+            cmdline.append(ws);
+            cmdline.append(params.szShellCmdPost);
+            m_ExecStartPreCmdLine.push_back(cmdline);
+        }
     }
 
-    if (params.szExecStart) {
+    if (!params.execStart.empty()) {
+        m_ExecStartFlags = ProcessSpecialCharacters(params.execStart);
         m_ExecStartCmdLine = params.szShellCmdPre;
-        m_ExecStartCmdLine.append(params.szExecStart);
+        m_ExecStartCmdLine.append(params.execStart);
         m_ExecStartCmdLine.append(params.szShellCmdPost);
     }
 
-    if (params.szExecStartPost) {
-        m_ExecStartPostCmdLine = params.szShellCmdPre;
-        m_ExecStartPostCmdLine.append(params.szExecStartPost);
-        m_ExecStartPostCmdLine.append(params.szShellCmdPost);
+    if (!params.execStartPost.empty()) {
+        for (auto ws: params.execStartPost) {
+	    m_ExecStartPostFlags.push_back(ProcessSpecialCharacters(ws));
+            wstring cmdline = params.szShellCmdPre;
+            cmdline.append(ws);
+            cmdline.append(params.szShellCmdPost);
+            m_ExecStartPostCmdLine.push_back(cmdline);
+        }
     }
 
-    if (params.szExecStop) {
+    if (!params.execStop.empty()) {
+        m_ExecStopFlags = ProcessSpecialCharacters(params.execStop);
         m_ExecStopCmdLine = params.szShellCmdPre;
-        m_ExecStopCmdLine.append(params.szExecStop);
+        m_ExecStopCmdLine.append(params.execStop);
         m_ExecStopCmdLine.append(params.szShellCmdPost);
     }
 
-    if (params.szExecStopPost) {
-        m_ExecStopPostCmdLine = params.szShellCmdPre;
-        m_ExecStopPostCmdLine.append(params.szExecStopPost);
-        m_ExecStopPostCmdLine.append(params.szShellCmdPost);
+    if (!params.execStopPost.empty()) {
+        for (auto ws: params.execStopPost) {
+	    m_ExecStopPostFlags.push_back(ProcessSpecialCharacters(ws));
+            wstring cmdline = params.szShellCmdPre;
+            cmdline.append(ws);
+            cmdline.append(params.szShellCmdPost);
+            m_ExecStopPostCmdLine.push_back(cmdline);
+        }
     }
 
     if (!params.files_before.empty()) {
@@ -195,7 +260,7 @@ enum OUTPUT_TYPE CWrapperService::StrToOutputType( std::wstring val, std::wstrin
 
 void CWrapperService::GetCurrentEnv()
 {
-    LPTCH tmpEnv = ::GetEnvironmentStrings();
+    wchar_t *tmpEnv = ::GetEnvironmentStringsW();
     LPCWSTR envPair = (LPCWSTR)tmpEnv;
     while (envPair[0])
     {
@@ -213,6 +278,9 @@ void CWrapperService::GetCurrentEnv()
     }
     ::FreeEnvironmentStrings(tmpEnv);
 }
+
+
+
 
 void CWrapperService::LoadEnvVarsFromFile(const wstring& path)
 {
@@ -251,7 +319,7 @@ void CWrapperService::LoadPShellEnvVarsFromFile(const wstring& path)
 
 }
 
-PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForProcess)
+PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForProcess, bool failOnError)
 {
     PROCESS_INFORMATION processInformation;
     STARTUPINFO startupInfo;
@@ -277,29 +345,18 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
 
     // Read the environment every time we start
 
-    if (!m_EnvironmentFiles.empty() ||
-        !m_EnvironmentFilesPS.empty())
-    {
-        GetCurrentEnv();
-        for (auto envFile : m_EnvironmentFiles)
-        {
-            LoadEnvVarsFromFile(envFile);
-        }
-        for (auto envFile : m_EnvironmentFilesPS)
-        {
-            LoadPShellEnvVarsFromFile(envFile);
-        }
-    }
-
     LPVOID lpEnv = NULL;
-    if (!m_envBuf.empty())
-        lpEnv = &m_envBuf[0];
-
+    if (!m_envBuf.empty()) {
+    wchar_t *tmpenv = (wchar_t*)m_envBuf.c_str();
+        lpEnv = (LPVOID)m_envBuf.c_str();
+    }
+    
     DWORD tempCmdLineCount = lstrlen(cmdLine) + 1;
     LPWSTR tempCmdLine = new WCHAR[tempCmdLineCount];  //Needed since CreateProcessW may change the contents of CmdLine
     wcscpy_s(tempCmdLine, tempCmdLineCount, cmdLine);
 
-    BOOL result = ::CreateProcess(NULL, tempCmdLine, NULL, NULL, TRUE, dwCreationFlags,
+*logfile << "create process " << cmdLine << std::endl;
+    BOOL result = ::CreateProcessW(NULL, tempCmdLine, NULL, NULL, TRUE, dwCreationFlags,
         lpEnv, NULL, &startupInfo, &processInformation);
 
     delete[] tempCmdLine;
@@ -308,8 +365,8 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     {
         DWORD err = GetLastError();
         wostringstream os;
-        *logfile << L"Error " << hex << err << L" while spawning the process: " << cmdLine;
-        WriteEventLogEntry(os.str().c_str(), EVENTLOG_ERROR_TYPE);
+        os << L"Error " << err << L" while spawning the process: " << cmdLine << std::endl;
+        *logfile << os.str();
 
         string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
         throw exception(str.c_str());
@@ -317,6 +374,7 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
 
     if(waitForProcess)
     {
+*logfile << "waitfor process " << cmdLine << std::endl;
         ::WaitForSingleObject(processInformation.hProcess, INFINITE);
 
         DWORD exitCode = 0;
@@ -336,6 +394,7 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
             string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
             throw exception(str.c_str());
         }
+*logfile << "process success " << cmdLine << std::endl;
     }
 
     return processInformation;
@@ -386,19 +445,49 @@ for (auto after : this->m_ServicesAfter) {
    *logfile << L"after service" << after << std::endl;
 }
 
+    // OK. We are going to launch. First resolve the environment
+
+    GetCurrentEnv();
+    for (auto envFile : m_EnvironmentFiles)
+    {
+        LoadEnvVarsFromFile(envFile);
+    }
+    for (auto envFile : m_EnvironmentFilesPS)
+    {
+        LoadPShellEnvVarsFromFile(envFile);
+    }
+
+    // Now we have the map, we can populate the buffer
+
+    m_envBuf = L"";
+    for(auto this_pair : m_Env) {
+        m_envBuf.append(this_pair.first);
+        m_envBuf.append(L"=");
+        m_envBuf.append(this_pair.second);
+        m_envBuf.push_back(L'\0');
+    }
+    m_envBuf.push_back(L'\0');
+
+    SetServiceStatus(SERVICE_RUNNING);
     if (!m_ExecStartPreCmdLine.empty())
     {
         wostringstream os;
-        *logfile << L"Running ExecStartPre command: " << m_ExecStartPreCmdLine.c_str();
-*logfile << L"execstartpre " <<  m_ExecStartPreCmdLine.c_str()  << std::endl;
-        StartProcess(m_ExecStartPreCmdLine.c_str(), true);
+        for( auto ws: m_ExecStartPreCmdLine) {
+            *logfile << L"Running ExecStartPre command: " << ws.c_str();
+	    // to do, add special char processing
+	    try {
+                StartProcess(ws.c_str(), true); 
+	    }
+	    catch(...) {
+	    }
+        }
     }
 
     *logfile << L"Starting service: " << m_ServiceName << std::endl;
 
 *logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
 
-    auto processInformation = StartProcess(m_ExecStartCmdLine.c_str());
+    auto processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
 
     m_dwProcessId = processInformation.dwProcessId;
     m_hProcess = processInformation.hProcess;
@@ -410,17 +499,18 @@ for (auto after : this->m_ServicesAfter) {
     // We will send CTRL+C to the child process to end it. Set the handler to NULL in parent process.
     if(!::SetConsoleCtrlHandler(NULL, TRUE))
     {
-    throw GetLastError();
+        throw GetLastError();
     }
     */
 
     if (!m_ExecStartPostCmdLine.empty())
     {
         wostringstream os;
-        os << L"Running ExecStartPost command: " << m_ExecStartPostCmdLine.c_str();
-*logfile << os.str() << std::endl;
-        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
-        StartProcess(m_ExecStartPostCmdLine.c_str(), true);
+        for( auto ws: m_ExecStartPostCmdLine) {
+            os << L"Running ExecStartPost command: " << ws.c_str();
+            *logfile << os.str() << std::endl;
+            StartProcess(ws.c_str(), true);
+        }
     }
 
 }
@@ -497,21 +587,16 @@ void CWrapperService::OnStop()
         StartProcess(m_ExecStopCmdLine.c_str(), true);
     }
 
-/*
-    if(!::GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0))
-        WriteEventLogEntry(L"Error while sending CTRL BREAK to a child process", EVENTLOG_WARNING_TYPE);
-
-    if(::WaitForSingleObject(m_hProcess, MAX_WAIT_CHILD_PROC) != WAIT_OBJECT_0)
-*/
     KillProcessTree(m_dwProcessId);
 
     if (!m_ExecStopPostCmdLine.empty())
     {
         wostringstream os;
-        os << L"Running ExecStopPost command: " << m_ExecStopPostCmdLine.c_str();
-*logfile << os.str() << std::endl;
-        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
-        StartProcess(m_ExecStopPostCmdLine.c_str(), true);
+        for( auto ws: m_ExecStopPostCmdLine) {
+            os << L"Running ExecStopPost command: " << ws.c_str();
+            *logfile << os.str() << std::endl;
+            StartProcess(ws.c_str(), true);
+        }
     }
 
 

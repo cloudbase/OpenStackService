@@ -114,7 +114,7 @@ public:
         }
         if (c == '\n') {
             *m_current = '\0';
-             std::wcerr << L"journal stream: end of line :" << m_buffer << std::endl;
+             std::wcerr << m_buffer << std::endl;
              if (m_console_output) {
                  std::wcerr << m_buffer;
              }

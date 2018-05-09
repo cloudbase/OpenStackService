@@ -46,11 +46,11 @@ public:
         LPCWSTR szServiceName;
         LPCWSTR szShellCmdPre;
         LPCWSTR szShellCmdPost;
-        LPCWSTR szExecStartPre;
-        LPCWSTR szExecStart;
-        LPCWSTR szExecStartPost;
-        LPCWSTR szExecStop;
-        LPCWSTR szExecStopPost;
+        std::vector<std::wstring> execStartPre;
+        std::wstring              execStart;
+        std::vector<std::wstring> execStartPost;
+        std::wstring              execStop;
+        std::vector<std::wstring> execStopPost;
         enum ServiceType serviceType;
         BOOL fCanStop;
         BOOL fCanShutdown;
@@ -70,11 +70,6 @@ public:
         ServiceParams(): szServiceName(NULL), 
             szShellCmdPre(NULL),
             szShellCmdPost(NULL),
-            szExecStartPre(NULL),
-            szExecStart(NULL),
-            szExecStartPost(NULL),
-            szExecStop(NULL),
-            szExecStopPost(NULL),
             serviceType(SERVICE_TYPE_SIMPLE),
             fCanStop(TRUE),
             fCanShutdown(TRUE),
@@ -91,6 +86,21 @@ protected:
 
 private:
 
+    // Special executable prefixes. See systemd.service
+    // we make a mask because some chars may be used together
+
+    static const wchar_t  EXECCHAR_ARG0 = L'@';
+    static const unsigned EXECFLAG_ARG0 = 0x000000001;
+
+    static const wchar_t  EXECCHAR_IGNORE_FAIL = L'-';
+    static const unsigned EXECFLAG_IGNORE_FAIL = 0x000000002;
+
+    static const wchar_t  EXECCHAR_FULL_PRIVELEGE = L'-';
+    static const unsigned EXECFLAG_FULL_PRIVELEGE = 0x000000004;
+
+    static const wchar_t  EXECCHAR_ELEVATE_PRIVELEGE = L'!';
+    static const unsigned EXECFLAG_ELEVATE_PRIVELEGE = 0x000000008;
+    static const unsigned EXECFLAG_AMBIENT_PRIVELEGE = 0x000000008; // !!
 
     void GetCurrentEnv();
     void LoadEnvVarsFromFile(const std::wstring& path);
@@ -99,16 +109,26 @@ private:
     static DWORD WINAPI WaitForProcessThread(LPVOID lpParam);
     static void WINAPI KillProcessTree(DWORD dwProcId);
     static enum OUTPUT_TYPE StrToOutputType( std::wstring ws, std::wstring *path );
+    unsigned ProcessSpecialCharacters( std::wstring &ws);
 
-    PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess = false);
+    PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess = false, bool failOnError=false);
 
     std::wstring m_ServiceName;
 
-    std::wstring m_ExecStartPreCmdLine;
+    std::vector<std::wstring> m_ExecStartPreCmdLine;
+    std::vector<unsigned>     m_ExecStartPreFlags;
+
     std::wstring m_ExecStartCmdLine;
-    std::wstring m_ExecStartPostCmdLine;
+    unsigned m_ExecStartFlags;
+
+    std::vector<std::wstring> m_ExecStartPostCmdLine;
+    std::vector<unsigned>     m_ExecStartPostFlags;
+
     std::wstring m_ExecStopCmdLine;
-    std::wstring m_ExecStopPostCmdLine;
+    unsigned m_ExecStopFlags;
+
+    std::vector<std::wstring> m_ExecStopPostCmdLine;
+    std::vector<unsigned>     m_ExecStopPostFlags;
 
     std::vector<std::wstring> m_FilesBefore;     // Service won't execute if these exist
     std::vector<std::wstring> m_ServicesBefore;  // Service won't execute if these are running

@@ -35,17 +35,18 @@ under the License.
 using namespace std;
 using namespace boost::program_options;
 
+
 struct CLIArgs
 {
     wstring unitPath;
     vector<wstring> environmentFiles;
     vector<wstring> environmentFilesPShell;
     vector<wstring> environmentVars;
-    wstring execStartPre;
-    wstring execStart;
-    wstring execStartPost;
+    vector<wstring> execStartPre;
+    wstring         execStart;
+    vector<wstring> execStartPost;
     wstring execStop;
-    wstring execStopPost;
+    vector<wstring> execStopPost;
     wstring serviceName;
     vector<wstring> additionalArgs;
     wstring logFilePath;    
@@ -80,7 +81,8 @@ class wojournalstream unit_log;
 
 class wojournalstream *logfile = &unit_log;
 
-wstring DEFAULT_SHELL_PRE  =  L"powershell -command \"& {";
+//wstring DEFAULT_SHELL_PRE  =  L"powershell -command \"& {";
+wstring DEFAULT_SHELL_PRE  =  L"pwsh.exe -command \"& {";
 wstring DEFAULT_SHELL_POST =  L" } \" ";
 wstring DEFAULT_START_ACTION = L"Write-Host \"No Start Action\" ";
 
@@ -116,8 +118,9 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     CLIArgs args;
     
     variables_map service_unit_options;
-    options_description config{ "service-unit_options" };
+    options_description config{ "service-unit-options" };
     config.add_options()
+        ("Unit.Description", value<string>(), "Description") 
         ("Unit.Requisite", wvalue<vector<wstring>>(), "Prereuqisites. If not present, stop service") 
         ("Unit.Before",    wvalue<vector<wstring>>(), "Do not run service if these things exist") 
         ("Unit.After",     wvalue<vector<wstring>>(), "Do not run service until these things exist") 
@@ -127,10 +130,10 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
         ("Service.EnvironmentFile-PS", wvalue<vector<wstring>>(), "Environment files in powershell format" )
         ("Service.Environment", wvalue<vector<wstring>>(), "Environment Variable settings" )
         ("Service.ExecStartPre", wvalue<vector<wstring>>(), "Execute before starting service")
-        ("Service.ExecStart", wvalue<vector<wstring>>(), "Execute commands at when starting service")
+        ("Service.ExecStart", wvalue<wstring>(), "Execute commands at when starting service")
         ("Service.ExecStartPost", wvalue<vector<wstring>>(), "Execute after starting service")
-        ("Service.ExecStop", wvalue<vector<wstring>>(), "Execute commands at when stopping service")
-        ("Service.ExecStopPost", wvalue<vector<wstring>>(), "Execute after stopping service")
+        ("Service.ExecStop", wvalue<wstring>(), "Execute command when stopping service")
+        ("Service.ExecStopPost", wvalue<vector<wstring>>(), "Execute multiple commands  after stopping service")
         ("Service.StandardOutput", wvalue<wstring>(), "standard out")
         ("Service.StandardError", wvalue<wstring>(), "standard error")
         ("Service.BusName", wvalue<wstring>(), "Systemd dbus name. Used only for resolving service type");
@@ -155,9 +158,29 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
 *logfile << L"check for service unit" << std::endl;
     if (vm.count("service-unit")) {
         args.unitPath = vm["service-unit"].as<wstring>();
-        std::wifstream service_unit_file(args.unitPath.c_str());
-*logfile << L"opened service unit " << std::endl;
-        auto config_parsed = parse_config_file(service_unit_file, config, true);
+        string unit_path( args.unitPath.begin(), args.unitPath.end());
+		std::ifstream service_unit_file;
+		std::string service_unit_contents;
+		try {
+			
+			service_unit_file.open(unit_path.c_str(), ios::in);
+			if (!service_unit_file.is_open()) {
+				*logfile << L"counldnt open" << std::endl;
+			}
+
+			//service_unit_contents = std::string((std::istreambuf_iterator<char>()), std::istreambuf_iterator<char>());
+			char buf[256];
+			service_unit_file.getline(buf, 256);
+
+			service_unit_file.clear();
+			service_unit_file.seekg(0, std::ios::beg);
+		}
+		catch (...) {
+			*logfile << L"Problems reading" << std::endl;
+		}
+
+*logfile << L"opened service unit " << service_unit_contents.c_str() << std::endl;
+        auto config_parsed = parse_config_file<char>(service_unit_file, config, true);
         store(config_parsed, service_unit_options);
         notify(service_unit_options);
 
@@ -381,65 +404,44 @@ for (auto elem : service_unit_options) {
 *logfile << "p5" << std::endl;
     if (service_unit_options.count("Service.ExecStartPre")) {
         vector<wstring> ws_vector = service_unit_options["Service.ExecStartPre"].as<vector<wstring>>();
-        wstring cmdline;
         for (auto ws : ws_vector) {
-            cmdline.append(ws);
-            cmdline.append(L" ; ");
+           EscapeForPowershell(ws);
+*logfile << "p5.1 exec start pre cmdline = " << ws << std::endl;
         }
-
-        EscapeForPowershell(cmdline);
-        args.execStartPre = cmdline;
-*logfile << "p5.1 exec start pre cmdline = " << cmdline << std::endl;
+        args.execStartPre = ws_vector;
     }
 
 *logfile << "p6" << std::endl;
 
     if (service_unit_options.count("Service.ExecStart")) {
-        vector<wstring> ws_vector = service_unit_options["Service.ExecStart"].as<vector<wstring>>();
-        wstring cmdline;
-        for (auto ws : ws_vector) {
-            cmdline.append(ws);
-            cmdline.append(L" ; ");
-        }
-        EscapeForPowershell(cmdline);
-        args.execStart = cmdline;
-*logfile << "p6.1 execstart = " << cmdline << std::endl;
-    }
-    else {
-        args.execStart = DEFAULT_START_ACTION;
+        args.execStart = service_unit_options["Service.ExecStart"].as<wstring>();
+        EscapeForPowershell(args.execStart);
+*logfile << "p6.1 execstart = " << args.execStart << std::endl;
     }
 
     if (service_unit_options.count("Service.ExecStartPost")) {
         vector<wstring> ws_vector = service_unit_options["Service.ExecStartPost"].as<vector<wstring>>();
-        wstring cmdline;
         for (auto ws : ws_vector) {
-            cmdline.append(ws);
-            cmdline.append(L" ; ");
+            EscapeForPowershell(ws);
+*logfile << "p6.2 execstartpost = " << ws << std::endl;
         }
-        EscapeForPowershell(cmdline);
-*logfile << "p6.2 execstartpost = " << cmdline << std::endl;
-        args.execStartPost = cmdline;
+        args.execStartPost = ws_vector;
     }
 
     if (service_unit_options.count("Service.ExecStop")) {
-        vector<wstring> ws_vector = service_unit_options["Service.ExecStop"].as<vector<wstring>>();
-        wstring cmdline;
-        for (auto ws : ws_vector) {
-            cmdline.append(ws);
-            cmdline.append(L" ; ");
-        }
-*logfile << "p6.1 execstop = " << cmdline << std::endl;
-        args.execStop = cmdline;
+        args.execStop = service_unit_options["Service.ExecStop"].as<wstring>();
+        EscapeForPowershell(args.execStop);
+*logfile << "p6.1 execstop = " << args.execStop << std::endl;
     }
+
 
     if (service_unit_options.count("Service.ExecStopPost")) {
         vector<wstring> ws_vector = service_unit_options["Service.ExecStopPost"].as<vector<wstring>>();
-        wstring cmdline;
         for (auto ws : ws_vector) {
-            cmdline.append(ws);
-            cmdline.append(L" ; ");
+            EscapeForPowershell(ws);
+*logfile << "p6.2 execstoppost = " << ws << std::endl;
         }
-        args.execStopPost = cmdline;
+        args.execStopPost = ws_vector;
     }
 
 *logfile << "p7" << std::endl;
@@ -467,18 +469,16 @@ int wmain(int argc, wchar_t *argv[])
         auto args = ParseArgs(argc, argv);
 
 
-*logfile << args.execStart << std::endl;
-       
 *logfile << L"log file name " << args.logFilePath.c_str() << std::endl;
 
         params.szServiceName  = args.serviceName.c_str();
         params.szShellCmdPre  = args.shellCmd_pre.c_str();
         params.szShellCmdPost = args.shellCmd_post.c_str();
-        params.szExecStartPre = args.execStartPre.c_str();
-        params.szExecStart     = args.execStart.c_str();
-        params.szExecStartPost = args.execStartPost.c_str();
-        params.szExecStop      = args.execStop.c_str();
-        params.szExecStopPost  = args.execStopPost.c_str();
+        params.execStartPre = args.execStartPre;
+        params.execStart      = args.execStart;
+        params.execStartPost  = args.execStartPost;
+        params.execStop       = args.execStop;
+        params.execStopPost   = args.execStopPost;
         params.environmentFilesPS = args.environmentFilesPShell;
         params.environmentFiles   = args.environmentFiles;
         params.environmentVars    = args.environmentVars;
