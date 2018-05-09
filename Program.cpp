@@ -316,6 +316,8 @@ for (auto elem : service_unit_options) {
         }
     }
 
+*logfile << "p4.1 service type " << args.serviceType << std::endl;
+
     if (service_unit_options.count("Unit.Requisite")) {
 
         // Sort into service and non service members. They require different code to check

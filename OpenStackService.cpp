@@ -179,6 +179,7 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
     }
 
     m_ServiceName = params.szServiceName;
+    m_ServiceType = params.serviceType;
 
     m_StdErr = params.stdErr;
     m_StdOut = params.stdOut;
@@ -356,6 +357,7 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
     wcscpy_s(tempCmdLine, tempCmdLineCount, cmdLine);
 
 *logfile << "create process " << cmdLine << std::endl;
+
     BOOL result = ::CreateProcessW(NULL, tempCmdLine, NULL, NULL, TRUE, dwCreationFlags,
         lpEnv, NULL, &startupInfo, &processInformation);
 
@@ -402,7 +404,14 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
 
 void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 {
+    boolean waitforfinish = true;
+
+    if (m_ServiceType == SERVICE_TYPE_FORKING) {
+        waitforfinish = false;
+    }
+
     m_IsStopping = FALSE;
+
 
 *logfile << L"start " << m_ServiceName << std::endl;
 
@@ -472,13 +481,17 @@ for (auto after : this->m_ServicesAfter) {
     if (!m_ExecStartPreCmdLine.empty())
     {
         wostringstream os;
-        for( auto ws: m_ExecStartPreCmdLine) {
+        for( int i = 0;  i < m_ExecStartPreCmdLine.size(); i++ ) {
+            auto ws = m_ExecStartPreCmdLine[i];
             *logfile << L"Running ExecStartPre command: " << ws.c_str();
 	    // to do, add special char processing
 	    try {
                 StartProcess(ws.c_str(), true); 
 	    }
 	    catch(...) {
+	        if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
+                    *logfile << L"Error in ExecStartPre command: " << ws.c_str() << "exiting" << std::endl;
+		}
 	    }
         }
     }
@@ -489,6 +502,7 @@ for (auto after : this->m_ServicesAfter) {
 
     auto processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
 
+#if 0
     m_dwProcessId = processInformation.dwProcessId;
     m_hProcess = processInformation.hProcess;
 
@@ -502,17 +516,31 @@ for (auto after : this->m_ServicesAfter) {
         throw GetLastError();
     }
     */
+#endif
 
     if (!m_ExecStartPostCmdLine.empty())
     {
         wostringstream os;
-        for( auto ws: m_ExecStartPostCmdLine) {
+        for( int i = 0;  i < m_ExecStartPostCmdLine.size(); i++ ) {
+            auto ws = m_ExecStartPostCmdLine[i];
             os << L"Running ExecStartPost command: " << ws.c_str();
             *logfile << os.str() << std::endl;
-            StartProcess(ws.c_str(), true);
+	    try {
+                StartProcess(ws.c_str(), true);
+	    }
+	    catch(...) {
+	        if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
+                    *logfile << L"Error in ExecStartPre command: " << ws.c_str() << "exiting" << std::endl;
+		}
+	    }
         }
     }
 
+    if (m_ServiceType == SERVICE_TYPE_SIMPLE || m_ServiceType == SERVICE_TYPE_ONESHOT) {
+        SetServiceStatus(SERVICE_STOPPED);
+    }	
+
+*logfile << L"exit service OnStart: " << std::endl;
 }
 
 DWORD WINAPI CWrapperService::WaitForProcessThread(LPVOID lpParam)
