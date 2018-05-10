@@ -50,6 +50,28 @@ struct CLIArgs
     vector<wstring> execStopPost;
     wstring serviceName;
     vector<wstring> additionalArgs;
+    vector<wstring> conditionArchitecture;
+    vector<wstring> conditionVirtualization;
+    vector<wstring> conditionHost;
+    vector<wstring> conditionKernelCommandLine;
+    vector<wstring> conditionKernelVersion;
+    vector<wstring> conditionSecurity;
+    vector<wstring> conditionCapability;
+    vector<wstring> conditionACPower;
+    vector<wstring> conditionNeedsUpdate;
+    vector<wstring> conditionFirstBoot;
+    vector<wstring> conditionPathExists;
+    vector<wstring> conditionPathExistsGlob;
+    vector<wstring> conditionPathIsDirectory;
+    vector<wstring> conditionPathIsSymbolicLink;
+    vector<wstring> conditionPathIsMountPoint;
+    vector<wstring> conditionPathIsReadWrite;
+    vector<wstring> conditionDirectoryNotEmpty;
+    vector<wstring> conditionFileNotEmpty;
+    vector<wstring> conditionFileIsExecutable;
+    vector<wstring> conditionUser;
+    vector<wstring> conditionGroup;
+    vector<wstring> conditionControlGroupController;
     wstring logFilePath;    
     wstring serviceUnit;
     wstring shellCmd_pre;
@@ -127,6 +149,28 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
         ("Unit.Requisite", wvalue<vector<wstring>>(), "Prereuqisites. If not present, stop service") 
         ("Unit.Before",    wvalue<vector<wstring>>(), "Do not run service if these things exist") 
         ("Unit.After",     wvalue<vector<wstring>>(), "Do not run service until these things exist") 
+        ("Unit.ConditionArchitecture", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionVirtualization", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionHost", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionKernelCommandLine", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionKernelVersion", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionSecurity", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionCapability", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionACPower", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionNeedsUpdate", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionFirstBoot", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionPathExists", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionPathExistsGlob", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionPathIsDirectory", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionPathIsSymbolicLink", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionPathIsMountPoint", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionPathIsReadWrite", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionDirectoryNotEmpty", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionFileNotEmpty", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionFileIsExecutable", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionUser", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionGroup", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
+        ("Unit.ConditionControlGroupController", wvalue<vector<wstring>>(), "Evaluatate the condition and run if true") 
         ("Service.Type", wvalue<wstring>(), "Systemd service type") 
         ("Service.Shell", wvalue<wstring>(), "Windows Extension. Shell to use for exec actions. Default is Powershell") 
         ("Service.EnvironmentFile", wvalue<vector<wstring>>(), "Environment files" )
@@ -367,6 +411,75 @@ for (auto elem : service_unit_options) {
         }
     }
 
+    if (service_unit_options.count( "Unit.ConditionArchitecture")) {
+        args.conditionArchitecture = service_unit_options["Unit.ConditionArchitecture"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionVirtualization")) {
+        args.conditionVirtualization = service_unit_options["Unit.ConditionVirtualization"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionHost")) {
+        args.conditionHost = service_unit_options["Unit.ConditionHost"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionKernelCommandLine")) {
+        args.conditionKernelCommandLine = service_unit_options["Unit.ConditionKernelCommandLine"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionKernelVersion")) {
+        args.conditionKernelVersion = service_unit_options["Unit.ConditionKernelVersion"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionSecurity")) {
+        args.conditionSecurity = service_unit_options["Unit.ConditionSecurity"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionCapability")) {
+        args.conditionCapability = service_unit_options["Unit.ConditionCapability"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionACPower")) {
+        args.conditionACPower = service_unit_options["Unit.ConditionACPower"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionNeedsUpdate")) {
+        args.conditionNeedsUpdate = service_unit_options["Unit.ConditionNeedsUpdate"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionFirstBoot")) {
+        args.conditionFirstBoot = service_unit_options["Unit.ConditionFirstBoot"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionPathExists")) {
+        args.conditionPathExists = service_unit_options["Unit.ConditionPathExists"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionPathExistsGlob")) {
+        args.conditionPathExistsGlob = service_unit_options["Unit.ConditionPathExistsGlob"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionPathIsDirectory")) {
+        args.conditionPathIsDirectory = service_unit_options["Unit.ConditionPathIsDirectory"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionPathIsSymbolicLink")) {
+        args.conditionPathIsSymbolicLink = service_unit_options["Unit.ConditionPathIsSymbolicLink"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionPathIsMountPoint")) {
+        args.conditionPathIsMountPoint = service_unit_options["Unit.ConditionPathIsMountPoint"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count("Unit.ConditionPathIsReadWrite")) {
+        args.conditionPathIsReadWrite = service_unit_options["Unit.ConditionPathIsReadWrite"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionDirectoryNotEmpty")) {
+        args.conditionDirectoryNotEmpty = service_unit_options["Unit.ConditionDirectoryNotEmpty"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count("Unit.ConditionFileNotEmpty")) {
+        args.conditionFileNotEmpty = service_unit_options["Unit.ConditionFileNotEmpty"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count( "Unit.ConditionFileIsExecutable")) {
+        args.conditionFileIsExecutable = service_unit_options["Unit.ConditionFileIsExecutable"].as<std::vector<std::wstring>>();
+    }
+    if (service_unit_options.count("Unit.ConditionUser")) {
+        args.conditionUser = service_unit_options["Unit.ConditionUser"].as<std::vector<std::wstring>>();
+    }
+
+    if (service_unit_options.count("Unit.ConditionGroup")) {
+        args.conditionGroup = service_unit_options["Unit.ConditionGroup"].as<std::vector<std::wstring>>();
+    }
+
+    if (service_unit_options.count("Unit.ConditionControlGroupController")) {
+        args.conditionControlGroupController = service_unit_options["Unit.ConditionControlGroupController"].as<std::vector<std::wstring>>();
+    }
+
     if (service_unit_options.count("Service.Shell")) {
         wstring shellname = service_unit_options["Service.Shell"].as<wstring>();
         transform(shellname.begin(), shellname.end(), shellname.begin(), tolower);
@@ -501,6 +614,29 @@ int wmain(int argc, wchar_t *argv[])
         params.fCanStop       = TRUE;
         params.fCanShutdown   = TRUE;
         params.fCanPauseContinue = FALSE;
+ 
+        params.conditionArchitecture = args.conditionArchitecture;
+        params.conditionVirtualization = args.conditionVirtualization;
+        params.conditionHost = args.conditionHost;
+        params.conditionKernelCommandLine = args.conditionKernelCommandLine;
+        params.conditionKernelVersion = args.conditionKernelVersion;
+        params.conditionSecurity = args.conditionSecurity;
+        params.conditionCapability = args.conditionCapability;
+        params.conditionACPower = args.conditionACPower;
+        params.conditionNeedsUpdate = args.conditionNeedsUpdate;
+        params.conditionFirstBoot = args.conditionFirstBoot;
+        params.conditionPathExists = args.conditionPathExists;
+        params.conditionPathExistsGlob = args.conditionPathExistsGlob;
+        params.conditionPathIsDirectory = args.conditionPathIsDirectory;
+        params.conditionPathIsSymbolicLink = args.conditionPathIsSymbolicLink;
+        params.conditionPathIsMountPoint = args.conditionPathIsMountPoint;
+        params.conditionPathIsReadWrite = args.conditionPathIsReadWrite;
+        params.conditionDirectoryNotEmpty = args.conditionDirectoryNotEmpty;
+        params.conditionFileNotEmpty = args.conditionFileNotEmpty;
+        params.conditionFileIsExecutable = args.conditionFileIsExecutable;
+        params.conditionUser = args.conditionUser;
+        params.conditionGroup = args.conditionGroup;
+        params.conditionControlGroupController = args.conditionControlGroupController;
                                 
         CWrapperService service(params);
         if (!CServiceBase::Run(service))

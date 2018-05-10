@@ -180,6 +180,29 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
         m_unitPath = L"c:\\etc\\SystemD\\active\\";
     }
 
+    m_ConditionArchitecture  = params.conditionArchitecture;
+    m_ConditionVirtualization = params.conditionVirtualization;
+    m_ConditionHost           = params.conditionHost;
+    m_ConditionKernelCommandLine = params.conditionKernelCommandLine;
+    m_ConditionKernelVersion     = params.conditionKernelVersion;
+    m_ConditionSecurity    = params.conditionSecurity;
+    m_ConditionCapability  = params.conditionCapability;
+    m_ConditionACPower     = params.conditionACPower;
+    m_ConditionNeedsUpdate = params.conditionNeedsUpdate;
+    m_ConditionFirstBoot   = params.conditionFirstBoot;
+    m_ConditionPathExists        = params.conditionPathExists;
+    m_ConditionPathExistsGlob    = params.conditionPathExistsGlob;
+    m_ConditionPathIsDirectory   = params.conditionPathIsDirectory;
+    m_ConditionPathIsSymbolicLink = params.conditionPathIsSymbolicLink;
+    m_ConditionPathIsMountPoint  = params.conditionPathIsMountPoint;
+    m_ConditionPathIsReadWrite   = params.conditionPathIsReadWrite;
+    m_ConditionDirectoryNotEmpty = params.conditionDirectoryNotEmpty;
+    m_ConditionFileNotEmpty      = params.conditionFileNotEmpty;
+    m_ConditionFileIsExecutable  = params.conditionFileIsExecutable;
+    m_ConditionUser  = params.conditionUser;
+    m_ConditionGroup = params.conditionGroup;
+    m_ConditionControlGroupController = params.conditionControlGroupController;
+
     m_ServiceName = params.szServiceName;
     m_ServiceType = params.serviceType;
 
@@ -414,6 +437,10 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
     m_IsStopping = FALSE;
 
 *logfile << L"start " << m_ServiceName << std::endl;
+    if (!EvaluateConditions()) {
+        SetServiceStatus(SERVICE_STOPPED);
+	return;
+    }
 
     // If files before exist, bail.
     for (auto before : this->m_FilesBefore) {
@@ -637,3 +664,357 @@ void CWrapperService::OnStop()
     ::CloseHandle(m_WaitForProcessThread);
     m_WaitForProcessThread = NULL;
 }
+
+
+boolean
+CWrapperService::EvaluateConditions()
+
+{
+    if (!m_ConditionArchitecture.empty()) {
+       for( auto ws: m_ConditionArchitecture) {
+           if (!EvalConditionArchitecture(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionVirtualization.empty()) {
+       for( auto ws: m_ConditionVirtualization) {
+           if (!EvalConditionVirtualization(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionHost.empty()) {
+       for( auto ws: m_ConditionHost) {
+           if (!EvalConditionHost(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionKernelCommandLine.empty()) {
+       for( auto ws: m_ConditionKernelCommandLine) {
+           if (!EvalConditionKernelCommandLine(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionKernelVersion.empty()) {
+       for( auto ws: m_ConditionKernelVersion) {
+           if (!EvalConditionKernelVersion(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionSecurity.empty()) {
+       for( auto ws: m_ConditionSecurity) {
+           if (!EvalConditionSecurity(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionCapability.empty()) {
+       for( auto ws: m_ConditionCapability) {
+           if (!EvalConditionCapability(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionACPower.empty()) {
+       for( auto ws: m_ConditionACPower) {
+           if (!EvalConditionACPower(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionNeedsUpdate.empty()) {
+       for( auto ws: m_ConditionNeedsUpdate) {
+           if (!EvalConditionNeedsUpdate(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionFirstBoot.empty()) {
+       for( auto ws: m_ConditionFirstBoot) {
+           if (!EvalConditionFirstBoot(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionPathExists.empty()) {
+       for( auto ws: m_ConditionPathExists) {
+           if (!EvalConditionPathExists(ws)) {
+	       *logfile << L"Condition failed" << std::endl;
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionPathExistsGlob.empty()) {
+       for( auto ws: m_ConditionPathExistsGlob) {
+           if (!EvalConditionPathExistsGlob(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionPathIsDirectory.empty()) {
+       for( auto ws: m_ConditionPathIsDirectory) {
+           if (!EvalConditionPathIsDirectory(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionPathIsSymbolicLink.empty()) {
+       for( auto ws: m_ConditionPathIsSymbolicLink) {
+           if (!EvalConditionPathIsSymbolicLink(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionPathIsMountPoint.empty()) {
+       for( auto ws: m_ConditionPathIsMountPoint) {
+           if (!EvalConditionPathIsMountPoint(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionPathIsReadWrite.empty()) {
+       for( auto ws: m_ConditionPathIsReadWrite) {
+           if (!EvalConditionPathIsReadWrite(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionDirectoryNotEmpty.empty()) {
+       for( auto ws: m_ConditionDirectoryNotEmpty) {
+           if (!EvalConditionDirectoryNotEmpty(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionFileNotEmpty.empty()) {
+       for( auto ws: m_ConditionFileNotEmpty) {
+           if (!EvalConditionFileNotEmpty(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionFileIsExecutable.empty()) {
+       for( auto ws: m_ConditionFileIsExecutable) {
+           if (!EvalConditionFileIsExecutable(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionUser.empty()) {
+       for( auto ws: m_ConditionUser) {
+           if (!EvalConditionUser(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionGroup.empty()) {
+       for( auto ws: m_ConditionGroup) {
+           if (!EvalConditionGroup(ws)) {
+	       return false;
+	   }
+       }
+    }
+    if (!m_ConditionControlGroupController.empty()) {
+       for( auto ws: m_ConditionControlGroupController) {
+           if (!EvalConditionControlGroupController(ws)) {
+	       return false;
+	   }
+       }
+    }
+
+    *logfile << L"Condition passed" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionArchitecture(std::wstring arg)
+{
+    *logfile << L"condition ConditionArchitecture is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionVirtualization(std::wstring arg)
+{
+    *logfile << L"condition ConditionVirtualization is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionHost(std::wstring arg)
+{
+    *logfile << L"condition ConditionHost is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionKernelCommandLine(std::wstring arg)
+{
+    *logfile << L"condition ConditionKernelCommandLine is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionKernelVersion(std::wstring arg)
+{
+    *logfile << L"condition ConditionKernelVersion is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionSecurity(std::wstring arg)
+{
+    *logfile << L"condition ConditionSecurity is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionCapability(std::wstring arg)
+{
+    *logfile << L"condition ConditionCapability is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionACPower(std::wstring arg)
+{
+    *logfile << L"condition ConditionACPower is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionNeedsUpdate(std::wstring arg)
+{
+    *logfile << L"condition ConditionNeedsUpdate is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionFirstBoot(std::wstring arg)
+{
+    *logfile << L"condition ConditionFirstBoot is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionPathExists(std::wstring arg)
+{
+    wchar_t *path = (wchar_t*)arg.c_str();
+    int rslt = 0;
+
+    *logfile << L"condition ConditionPathExists " << arg << std::endl;
+
+    if (path[0] == L'!') {
+        rslt =  ::GetFileAttributes(++path);
+        return rslt == INVALID_FILE_ATTRIBUTES;
+    }
+    else {
+        rslt =  ::GetFileAttributes(path);
+        return rslt != INVALID_FILE_ATTRIBUTES;
+    }
+}
+
+
+boolean 
+CWrapperService::EvalConditionPathExistsGlob(std::wstring arg)
+{
+    *logfile << L"condition ConditionPathExistsGlob is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionPathIsDirectory(std::wstring arg)
+{
+    *logfile << L"condition ConditionPathIsDirectory is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionPathIsSymbolicLink(std::wstring arg)
+{
+    *logfile << L"condition ConditionPathIsSymbolicLink is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionPathIsMountPoint(std::wstring arg)
+{
+    *logfile << L"condition ConditionPathIsMountPoint is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionPathIsReadWrite(std::wstring arg)
+{
+    *logfile << L"condition ConditionPathIsReadWrite is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionDirectoryNotEmpty(std::wstring arg)
+{
+    *logfile << L"condition ConditionDirectoryNotEmpty is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionFileNotEmpty(std::wstring arg)
+{
+    *logfile << L"condition ConditionFileNotEmpty is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionFileIsExecutable(std::wstring arg)
+{
+    *logfile << L"condition ConditionFileIsExecutable is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionUser(std::wstring arg)
+{
+    *logfile << L"condition ConditionUser is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionGroup(std::wstring arg)
+{
+    *logfile << L"condition ConditionGroup is not implemented" << std::endl;
+    return true;
+}
+
+
+boolean 
+CWrapperService::EvalConditionControlGroupController(std::wstring arg)
+{
+    *logfile << L"condition ConditionControlGroupController  is not implemented" << std::endl;
+    return true;
+}
+
+

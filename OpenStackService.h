@@ -67,6 +67,28 @@ public:
         std::vector<std::wstring> services_after;
         std::vector<std::wstring> files_requisite;
         std::vector<std::wstring> services_requisite;
+        std::vector<std::wstring> conditionArchitecture;
+        std::vector<std::wstring> conditionVirtualization;
+        std::vector<std::wstring> conditionHost;
+        std::vector<std::wstring> conditionKernelCommandLine;
+        std::vector<std::wstring> conditionKernelVersion;
+        std::vector<std::wstring> conditionSecurity;
+        std::vector<std::wstring> conditionCapability;
+        std::vector<std::wstring> conditionACPower;
+        std::vector<std::wstring> conditionNeedsUpdate;
+        std::vector<std::wstring> conditionFirstBoot;
+        std::vector<std::wstring> conditionPathExists;
+        std::vector<std::wstring> conditionPathExistsGlob;
+        std::vector<std::wstring> conditionPathIsDirectory;
+        std::vector<std::wstring> conditionPathIsSymbolicLink;
+        std::vector<std::wstring> conditionPathIsMountPoint;
+        std::vector<std::wstring> conditionPathIsReadWrite;
+        std::vector<std::wstring> conditionDirectoryNotEmpty;
+        std::vector<std::wstring> conditionFileNotEmpty;
+        std::vector<std::wstring> conditionFileIsExecutable;
+        std::vector<std::wstring> conditionUser;
+        std::vector<std::wstring> conditionGroup;
+        std::vector<std::wstring> conditionControlGroupController;
         ServiceParams(): szServiceName(NULL), 
             szShellCmdPre(NULL),
             szShellCmdPost(NULL),
@@ -113,6 +135,30 @@ private:
     unsigned ProcessSpecialCharacters( std::wstring &ws);
 
     PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess = false, bool failOnError=false);
+    boolean EvaluateConditions();
+
+    boolean EvalConditionArchitecture(std::wstring arg);
+    boolean EvalConditionVirtualization(std::wstring arg);
+    boolean EvalConditionHost(std::wstring arg);
+    boolean EvalConditionKernelCommandLine(std::wstring arg);
+    boolean EvalConditionKernelVersion(std::wstring arg);
+    boolean EvalConditionSecurity(std::wstring arg);
+    boolean EvalConditionCapability(std::wstring arg);
+    boolean EvalConditionACPower(std::wstring arg);
+    boolean EvalConditionNeedsUpdate(std::wstring arg);
+    boolean EvalConditionFirstBoot(std::wstring arg);
+    boolean EvalConditionPathExists(std::wstring arg);
+    boolean EvalConditionPathExistsGlob(std::wstring arg);
+    boolean EvalConditionPathIsDirectory(std::wstring arg);
+    boolean EvalConditionPathIsSymbolicLink(std::wstring arg);
+    boolean EvalConditionPathIsMountPoint(std::wstring arg);
+    boolean EvalConditionPathIsReadWrite(std::wstring arg);
+    boolean EvalConditionDirectoryNotEmpty(std::wstring arg);
+    boolean EvalConditionFileNotEmpty(std::wstring arg);
+    boolean EvalConditionFileIsExecutable(std::wstring arg);
+    boolean EvalConditionUser(std::wstring arg);
+    boolean EvalConditionGroup(std::wstring arg);
+    boolean EvalConditionControlGroupController(std::wstring arg);
 
     std::wstring m_ServiceName;
 
@@ -144,6 +190,29 @@ private:
     std::wstring m_unitPath;
     std::wstring m_envBuf;
     EnvMap m_Env;
+
+    std::vector<std::wstring> m_ConditionArchitecture;
+    std::vector<std::wstring> m_ConditionVirtualization;
+    std::vector<std::wstring> m_ConditionHost;
+    std::vector<std::wstring> m_ConditionKernelCommandLine;
+    std::vector<std::wstring> m_ConditionKernelVersion;
+    std::vector<std::wstring> m_ConditionSecurity;
+    std::vector<std::wstring> m_ConditionCapability;
+    std::vector<std::wstring> m_ConditionACPower;
+    std::vector<std::wstring> m_ConditionNeedsUpdate;
+    std::vector<std::wstring> m_ConditionFirstBoot;
+    std::vector<std::wstring> m_ConditionPathExists;
+    std::vector<std::wstring> m_ConditionPathExistsGlob;
+    std::vector<std::wstring> m_ConditionPathIsDirectory;
+    std::vector<std::wstring> m_ConditionPathIsSymbolicLink;
+    std::vector<std::wstring> m_ConditionPathIsMountPoint;
+    std::vector<std::wstring> m_ConditionPathIsReadWrite;
+    std::vector<std::wstring> m_ConditionDirectoryNotEmpty;
+    std::vector<std::wstring> m_ConditionFileNotEmpty;
+    std::vector<std::wstring> m_ConditionFileIsExecutable;
+    std::vector<std::wstring> m_ConditionUser;
+    std::vector<std::wstring> m_ConditionGroup;
+    std::vector<std::wstring> m_ConditionControlGroupController;
 
     DWORD m_dwProcessId;
     HANDLE m_hProcess;
