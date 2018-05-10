@@ -18,6 +18,7 @@
 \***************************************************************************/
 
 #pragma region Includes
+#include <ios>
 #include "ServiceBase.h"
 #include <assert.h>
 #include <strsafe.h>
@@ -74,6 +75,7 @@ BOOL CServiceBase::Run(CServiceBase &service)
 void WINAPI CServiceBase::ServiceMain(DWORD dwArgc, PWSTR *pszArgv)
 {
     assert(s_service != NULL);
+
 
     // Register the handler function for the service
     s_service->m_statusHandle = RegisterServiceCtrlHandler(
@@ -143,6 +145,7 @@ void WINAPI CServiceBase::ServiceCtrlHandler(DWORD dwCtrl)
 //   * fCanPauseContinue - the service can be paused and continued
 //
 CServiceBase::CServiceBase(LPCWSTR pszServiceName,
+                           class wojournalstream *logfile = NULL,
                            BOOL fCanStop,
                            BOOL fCanShutdown,
                            BOOL fCanPauseContinue)
@@ -174,6 +177,15 @@ CServiceBase::CServiceBase(LPCWSTR pszServiceName,
     m_status.dwServiceSpecificExitCode = 0;
     m_status.dwCheckPoint = 0;
     m_status.dwWaitHint = 0;
+
+    if (logfile) {
+        this->logfile = logfile;
+        *this->logfile << L"got log file" << std::endl;
+    }
+    else {
+        this->logfile = new wojournalstream(L"file:", L"c:\\tmp\\openstackservice.default.log");
+        *this->logfile << L"opened log file" << std::endl;
+    }
 }
 
 //
@@ -203,6 +215,7 @@ CServiceBase::~CServiceBase(void)
 //
 void CServiceBase::Start(DWORD dwArgc, PWSTR *pszArgv)
 {
+    *logfile << L"Start" << std::endl;
     try
     {
         // Tell SCM that the service is starting.
@@ -212,20 +225,30 @@ void CServiceBase::Start(DWORD dwArgc, PWSTR *pszArgv)
         OnStart(dwArgc, pszArgv);
 
         // Tell SCM that the service is started.
-        SetServiceStatus(SERVICE_RUNNING);
+        // SetServiceStatus(SERVICE_RUNNING);
     }
     catch (DWORD dwError)
     {
         // Log the error.
         WriteErrorLogEntry(L"Service Start", dwError);
+    *logfile << L"Start failed*2 " << std::endl;
 
         // Set the service status to be stopped.
         SetServiceStatus(SERVICE_STOPPED, dwError);
     }
-    catch (...)
+    catch (const std::exception &e)
     {
         // Log the error.
         WriteEventLogEntry(L"Service failed to start.", EVENTLOG_ERROR_TYPE);
+
+    *logfile << L"Start failed " << e.what() << std::endl;
+
+        // Set the service status to be stopped.
+        SetServiceStatus(SERVICE_STOPPED);
+    }
+    catch (...) {
+        WriteEventLogEntry(L"Service failed to start.", EVENTLOG_ERROR_TYPE);
+    *logfile << L"Start failed reason unknown" << std::endl;
 
         // Set the service status to be stopped.
         SetServiceStatus(SERVICE_STOPPED);
