@@ -105,6 +105,7 @@ protected:
 
     virtual void OnStart(DWORD dwArgc, PWSTR *pszArgv);
     virtual void OnStop();
+    virtual boolean WaitForDependents();
 
 private:
 

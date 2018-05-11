@@ -430,6 +430,15 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 {
     boolean waitforfinish = true;
 
+    SetServiceStatus(SERVICE_RUNNING);
+    if (!m_ServicesBefore.empty()) {
+        if (!WaitForDependents()) {
+            *logfile << L"Failure in WaitForDepenents" << std::endl;
+            throw ERROR_SERVICE_DEPENDENCY_FAIL;
+            return;
+        }
+    }
+
     if (m_ServiceType == SERVICE_TYPE_FORKING) {
         waitforfinish = false;
     }
@@ -1014,6 +1023,69 @@ boolean
 CWrapperService::EvalConditionControlGroupController(std::wstring arg)
 {
     *logfile << L"condition ConditionControlGroupController  is not implemented" << std::endl;
+    return true;
+}
+
+
+
+boolean
+CWrapperService::WaitForDependents() 
+
+{
+    DWORD bytes_needed = 0;
+    DWORD num_services = 0;
+    ENUM_SERVICE_STATUS *pServices;
+
+    SC_HANDLE hsc = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+    if (!hsc) {
+        int last_error = GetLastError();
+        wcerr << L"WaitForDependents could not open service manager win err = " << last_error << std::endl;
+        return false;
+    }
+
+    SC_HANDLE hsvc = OpenServiceW(hsc, m_ServiceName.c_str(), GENERIC_READ);
+    if (hsvc == NULL)
+    {
+        wcerr << L"WaitForDependents OpeService failed " << GetLastError() << std::endl;
+        CloseServiceHandle(hsc);
+        return false;
+    }
+
+    // Figure out how much data I need to alloc
+    (void)::EnumDependentServices(
+                                    hsvc,           //  _In_      SC_HANDLE             hService,
+                                    SERVICE_ACTIVE, //  _In_      DWORD                 dwServiceState,
+                                    NULL,           //  _Out_opt_ LPENUM_SERVICE_STATUS lpServices,
+                                    0,              //  _In_      DWORD                 cbBufSize,
+                                    &bytes_needed,  //  _Out_     LPDWORD               pcbBytesNeeded,
+                                    &num_services   //  _Out_     LPDWORD               lpServicesReturned
+                                );
+
+    pServices = (ENUM_SERVICE_STATUS *)new char[bytes_needed];
+    do {
+        if (!::EnumDependentServices(
+                                    hsvc,           //  _In_      SC_HANDLE             hService,
+                                    SERVICE_ACTIVE, //  _In_      DWORD                 dwServiceState,
+                                    pServices,      //  _Out_opt_ LPENUM_SERVICE_STATUS lpServices,
+                                    bytes_needed,   //  _In_      DWORD                 cbBufSize,
+                                    &bytes_needed,  //  _Out_     LPDWORD               pcbBytesNeeded,
+                                    &num_services   //  _Out_     LPDWORD               lpServicesReturned
+                               ) ) {
+            int last_error = GetLastError();
+             // 2do: handle MORE_DATA
+            wcerr << L"WaitForDependents could not enum dependent services win err = " << last_error << std::endl;
+            CloseServiceHandle(hsvc);
+            CloseServiceHandle(hsc);
+            return false;
+        }
+        if (num_services > 0) {
+             Sleep(100); // sleep for 0.1 sec as we check
+        }
+    } while(num_services > 0);
+
+    CloseServiceHandle(hsvc);
+    CloseServiceHandle(hsc);
+
     return true;
 }
 
