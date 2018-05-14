@@ -191,8 +191,6 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     desc.add_options()
         ("service-unit", wvalue<wstring>(), "Service uses the service unit file in %SystemDrive%/etc/SystemD/active" )
         ("log-file,l", wvalue<wstring>(), "Log file containing  the redirected STD OUT and ERR of the child process")
-        ("environment-file,e", wvalue<vector<wstring>>(), "Environment file")
-        ("environment-file-pshell", wvalue<vector<wstring>>(), "Powershell environment files")
         ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
         ("service-name", wvalue<wstring>(), "Service name");
 
@@ -289,14 +287,6 @@ for (auto elem : service_unit_options) {
 
 *logfile << "open stderrFile Path = " << args.stderrFilePath.c_str() << std::endl;
     unit_stderr.open(args.stderrOutputType, args.stderrFilePath);
-
-    if (vm.count("environment-file")) {
-        args.environmentFiles = vm["environment-file"].as<vector<wstring>>();
-    }
-
-    if (vm.count("environment-file-pshell")) {
-        args.environmentFilesPShell = vm["environment-file-pshell"].as<vector<wstring>>();
-    }
 
 *logfile << "p1" << std::endl;
     if (vm.count("log-file")) {
@@ -511,12 +501,15 @@ for (auto elem : service_unit_options) {
         args.environmentVars = service_unit_options["Service.Environment"].as<vector<wstring>>();
     }
 
+*logfile << L"service_unit_options.count(\"Service.EnvironmentFile\") " << service_unit_options.count("Service.EnvironmentFile") << std::endl;
     if (service_unit_options.count("Service.EnvironmentFile")) {
         args.environmentFiles = service_unit_options["Service.EnvironmentFile"].as<vector<wstring>>();
+*logfile << L"Env file" <<std::endl;
     }
 
     if (service_unit_options.count("Service.EnvironmentFile-PS")) {
         args.environmentFilesPShell = service_unit_options["Service.EnvironmentFilesPS"].as<vector<wstring>>();
+*logfile << L"Env file psh" <<std::endl;
     }
 
 *logfile << "p5" << std::endl;
@@ -637,7 +630,7 @@ int wmain(int argc, wchar_t *argv[])
         params.conditionUser = args.conditionUser;
         params.conditionGroup = args.conditionGroup;
         params.conditionControlGroupController = args.conditionControlGroupController;
-                                
+
         CWrapperService service(params);
         if (!CServiceBase::Run(service))
         {

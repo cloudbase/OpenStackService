@@ -164,8 +164,20 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
         m_Requisite_Services = params.services_requisite;
     }
 
+*logfile << L"check for envfiles " << std::endl;
     if (!params.environmentFiles.empty()) {
         m_EnvironmentFiles = params.environmentFiles;
+for( auto envf : m_EnvironmentFiles ) {
+*logfile << L"envfile " << envf << std::endl;
+}
+    }
+
+*logfile << L"check for envfilesps " << std::endl;
+    if (!params.environmentFilesPS.empty()) {
+        m_EnvironmentFilesPS = params.environmentFilesPS;
+for( auto envf : m_EnvironmentFilesPS ) {
+*logfile << L"envifile " << envf << std::endl;
+}
     }
 
     if (!params.environmentVars.empty()) {
@@ -306,20 +318,36 @@ void CWrapperService::GetCurrentEnv()
     ::FreeEnvironmentStrings(tmpEnv);
 }
 
+
+/*
+ * The rule is that if the env file passed in ends with .ps1, we will go ahead and read it as powershell
+ * any other extension, including none, we treat as bash syntax
+ */
 void CWrapperService::LoadEnvVarsFromFile(const wstring& path)
 {
-    wifstream inputFile(path);
-    wstring line;
 
-    while (getline(inputFile, line))
-    {
-        wregex rgx(L"^([^#][^=]*)=(.*)$");
-        wsmatch matches;
-        if (regex_search(line, matches, rgx))
+    int ext_idx = path.find_last_of(L'.');
+    wstring file_ext = ext_idx != std::string::npos? path.substr(ext_idx) : L"";
+
+    if (file_ext.compare(L".ps1") == 0) {
+        LoadPShellEnvVarsFromFile(path);
+        return;
+    }
+    else {
+        wifstream inputFile(path);
+        wstring line;
+    
+        while (getline(inputFile, line))
         {
-            auto name = boost::algorithm::trim_copy(matches[1].str());
-            auto value = boost::algorithm::trim_copy(matches[2].str());
-            m_Env[name] = value;
+            wregex rgx(L"^([^#][^=]*)=(.*)$");
+            wsmatch matches;
+            if (regex_search(line, matches, rgx))
+            {
+                auto name = boost::algorithm::trim_copy(matches[1].str());
+                auto value = boost::algorithm::trim_copy(matches[2].str());
+                m_Env[name] = value;
+*logfile << L"environment file key = " << name << " val " << value << std::endl;
+            }
         }
     }
 }
@@ -338,6 +366,7 @@ void CWrapperService::LoadPShellEnvVarsFromFile(const wstring& path)
             auto name = boost::algorithm::trim_copy(matches[1].str());
             auto value = boost::algorithm::trim_copy(matches[2].str());
             m_Env[name] = value;
+*logfile << L"PS environment file key = " << name << " val " << value << std::endl;
         }
     }
 
@@ -369,7 +398,7 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
 
     DWORD dwCreationFlags = CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
 
-    // Read the environment every time we start
+    // Read the environment every time we start, but read it once per start
 
     LPVOID lpEnv = NULL;
     if (!m_envBuf.empty()) {
@@ -496,10 +525,13 @@ for (auto after : this->m_ServicesAfter) {
     GetCurrentEnv();
     for (auto envFile : m_EnvironmentFiles)
     {
+*logfile << L"Set up environment file " << envFile << std::endl;
         LoadEnvVarsFromFile(envFile);
     }
+
     for (auto envFile : m_EnvironmentFilesPS)
     {
+*logfile << L"Set up pwsh environment file " << envFile << std::endl;
         LoadPShellEnvVarsFromFile(envFile);
     }
 
