@@ -417,11 +417,17 @@ for (auto elem : service_unit_options) {
             args.restartAction = CWrapperService::RESTART_ACTION_UNDEFINED;
         }
     }
+    else {
+        args.restartAction = CWrapperService::RESTART_ACTION_NO;
+    }
 
     if (service_unit_options.count("Service.RestartSec")) {
         wstring str_sec = service_unit_options["Service.Restart"].as<std::wstring>();
         int millis = string_duration_to_millis(str_sec);
         args.restartMillis = millis;
+    }
+    else {
+        args.restartMillis = 100; // From systemd.service default 100ms
     }
 
 *logfile << "p4.1 service type " << args.serviceType << std::endl;
@@ -700,6 +706,8 @@ int wmain(int argc, wchar_t *argv[])
         params.conditionUser = args.conditionUser;
         params.conditionGroup = args.conditionGroup;
         params.conditionControlGroupController = args.conditionControlGroupController;
+        params.restartAction = args.restartAction;
+        params.restartMillis = args.restartMillis;
 
         CWrapperService service(params);
         if (!CServiceBase::Run(service))

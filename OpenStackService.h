@@ -150,7 +150,7 @@ private:
     static enum OUTPUT_TYPE StrToOutputType( std::wstring ws, std::wstring *path );
     unsigned ProcessSpecialCharacters( std::wstring &ws);
 
-    PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess = false, bool failOnError=false);
+    PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess, bool failOnError=false);
     boolean EvaluateConditions();
 
     boolean EvalConditionArchitecture(std::wstring arg);
@@ -235,8 +235,8 @@ private:
     HANDLE m_WaitForProcessThread;
     enum ServiceType m_ServiceType;
     enum RestartAction m_RestartAction;
-    int  RestartMillis;
-    int  StartLimitIntervalMillis;
+    int  m_RestartMillis;
+    int  m_StartLimitIntervalMillis;
 
     wojournalstream *m_StdErr;
     wojournalstream *m_StdOut;

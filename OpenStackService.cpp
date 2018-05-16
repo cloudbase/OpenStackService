@@ -217,6 +217,8 @@ for( auto envf : m_EnvironmentFilesPS ) {
 
     m_ServiceName = params.szServiceName;
     m_ServiceType = params.serviceType;
+    m_RestartAction = params.restartAction;
+    m_RestartMillis = params.restartMillis;
 
     m_StdErr = params.stdErr;
     m_StdOut = params.stdOut;
@@ -456,21 +458,18 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
 }
 
 void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
+
 {
     boolean waitforfinish = true;
 
     SetServiceStatus(SERVICE_RUNNING);
-
-    if (m_ServiceType == SERVICE_TYPE_FORKING) {
-        waitforfinish = false;
-    }
 
     m_IsStopping = FALSE;
 
 *logfile << L"start " << m_ServiceName << std::endl;
     if (!EvaluateConditions()) {
         SetServiceStatus(SERVICE_STOPPED);
-    return;
+        return;
     }
 
     // If files before exist, bail.
@@ -555,12 +554,12 @@ for (auto after : this->m_ServicesAfter) {
               // to do, add special char processing
             try {
                 StartProcess(ws.c_str(), true); 
-              }
-              catch(...) {
+            }
+            catch(...) {
                  if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
                     *logfile << L"Error in ExecStartPre command: " << ws.c_str() << "exiting" << std::endl;
-                   }
-             }
+                 }
+            }
         }
     }
 
@@ -568,9 +567,9 @@ for (auto after : this->m_ServicesAfter) {
 
 *logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
 
-
+    PROCESS_INFORMATION processInformation;
     if (!m_ExecStartCmdLine.empty()) {
-        auto processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
+        processInformation = StartProcess(m_ExecStartCmdLine.c_str(), false);
     }
 
     if (!m_ExecStartPostCmdLine.empty())
@@ -581,19 +580,69 @@ for (auto after : this->m_ServicesAfter) {
             auto ws = m_ExecStartPostCmdLine[i];
             os << L"Running ExecStartPost command: " << ws.c_str();
             *logfile << os.str() << std::endl;
-        try {
+            try {
                 StartProcess(ws.c_str(), true);
-        }
-        catch(...) {
-            if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
+            }
+            catch(...) {
+                if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
                     *logfile << L"Error in ExecStartPre command: " << ws.c_str() << "exiting" << std::endl;
-        }
-        }
+                }
+            }
         }
     }
 
-    if (m_ServiceType == SERVICE_TYPE_SIMPLE || m_ServiceType == SERVICE_TYPE_ONESHOT) {
+*logfile << "waitfor main process " << std::endl;
+    ::WaitForSingleObject(processInformation.hProcess, INFINITE);
+
+    DWORD exitCode = 0;
+    BOOL result = ::GetExitCodeProcess(processInformation.hProcess, &exitCode);
+    ::CloseHandle(processInformation.hProcess);
+
+    if (!result || exitCode)
+    {
+        wostringstream os;
+        if (!result) {
+            *logfile << L"GetExitCodeProcess failed";
+        }
+        else {
+            *logfile << L"Command \"" << m_ExecStartCmdLine << L"\" failed with exit code: " << exitCode;
+        }
+
+        string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
+        throw exception(str.c_str());
+    }
+
+*logfile << "process success " << m_ExecStartCmdLine << std::endl;
+
+    switch ( m_RestartAction == RESTART_ACTION_NO ) {
+    default:
+    case RESTART_ACTION_NO:
         SetServiceStatus(SERVICE_STOPPED);
+        break;
+
+    case RESTART_ACTION_ALWAYS:
+        while (true) {
+            // Just keep restarting the main process forever, until stoppe. Wait for it each time
+            // we don't rerun the execStartPre or Post actions
+            ::Sleep(m_RestartMillis); // But we respect restartSec.
+
+            if (!m_ExecStartCmdLine.empty()) {
+                SetServiceStatus(SERVICE_RUNNING);
+                processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
+                SetServiceStatus(SERVICE_STOPPED);
+            }
+            else {
+                break;
+            }
+        }
+        break;
+    case RESTART_ACTION_ON_SUCCESS:
+    case RESTART_ACTION_ON_FAILURE:
+    case RESTART_ACTION_ON_ABNORMAL:
+    case RESTART_ACTION_ON_ABORT:
+    case RESTART_ACTION_ON_WATCHDOG:
+        // 2do
+        break;
     }    
 
 *logfile << L"exit service OnStart: " << std::endl;
