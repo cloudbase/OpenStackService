@@ -49,7 +49,6 @@ struct CLIArgs
     wstring execStop;
     vector<wstring> execStopPost;
     wstring serviceName;
-    vector<wstring> additionalArgs;
     vector<wstring> conditionArchitecture;
     vector<wstring> conditionVirtualization;
     vector<wstring> conditionHost;
@@ -87,6 +86,8 @@ struct CLIArgs
     wstring stderrFilePath;
     wstring stdoutOutputType;
     wstring stdoutFilePath;
+    enum CWrapperService::RestartAction restartAction;
+    int  restartMilliseconds;
 };
 
 CLIArgs ParseArgs(int argc, wchar_t *argv[]);
@@ -177,21 +178,23 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
         ("Service.EnvironmentFile-PS", wvalue<vector<wstring>>(), "Environment files in powershell format" )
         ("Service.Environment", wvalue<vector<wstring>>(), "Environment Variable settings" )
         ("Service.ExecStartPre", wvalue<vector<wstring>>(), "Execute before starting service")
-
         ("Service.ExecStart", wvalue<wstring>(), "Execute commands at when starting service")
         ("Service.ExecStartPost", wvalue<vector<wstring>>(), "Execute after starting service")
         ("Service.ExecStop", wvalue<wstring>(), "Execute command when stopping service")
         ("Service.ExecStopPost", wvalue<vector<wstring>>(), "Execute multiple commands  after stopping service")
         ("Service.StandardOutput", wvalue<wstring>(), "standard out")
         ("Service.StandardError", wvalue<wstring>(), "standard error")
-        ("Service.BusName", wvalue<wstring>(), "Systemd dbus name. Used only for resolving service type");
-
+        ("Service.BusName", wvalue<wstring>(), "Systemd dbus name. Used only for resolving service type")
+        ("Service.Restart", wvalue<wstring>(), "restart policy for the service")
+        ("Service.WorkingDirectory", wvalue<wstring>(), "working directory")
+        ("Service.StartLimitInterval", wvalue<wstring>(), "minimum time between restarts")
+        ("Service.KillSignal", wvalue<wstring>(), "signal to send process when stopping. Ignored");
+        ("Service.LimitNOFILE", wvalue<wstring>(), "maximum number of file handles allowed for this service Not implmenented");
 
     options_description desc{ "Options" };
     desc.add_options()
         ("service-unit", wvalue<wstring>(), "Service uses the service unit file in %SystemDrive%/etc/SystemD/active" )
         ("log-file,l", wvalue<wstring>(), "Log file containing  the redirected STD OUT and ERR of the child process")
-        ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
         ("service-name", wvalue<wstring>(), "Service name");
 
     variables_map vm;
@@ -242,8 +245,12 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
 
     *logfile << L"unit path " << args.unitPath << std::endl ;
 for (auto elem : service_unit_options) {
+    try {
     *logfile << "elem_name ";
     *logfile << std::wstring(elem.first.begin(), elem.first.end()) << std::endl;
+    } catch(...) {
+        *logfile << "bad elem_name ";
+    }
 }
 
     }
@@ -252,21 +259,23 @@ for (auto elem : service_unit_options) {
         // else give up
     }
 
-    args.stderrOutputType = L"journal";
-*logfile << L"service stdoutput = " << service_unit_options["Service.StandardOutput"].as<wstring>();
-    if ( service_unit_options.count("Service.StandardOutput")) {
+    if (service_unit_options.count("Service.StandardOutput")) {
         args.stdoutOutputType = service_unit_options["Service.StandardOutput"].as<wstring>();
  
         if (args.stdoutOutputType.compare(0, 5, L"file:", 5)) {
             args.stdoutFilePath = args.stdoutOutputType.substr(0, args.stdoutOutputType.find_first_of(':')+1);
         }
     }
+    else {
+        args.stdoutOutputType = L"journal";
+    }
+
     if (args.stdoutFilePath.empty()) {
         args.stdoutFilePath = DEFAULT_LOG_DIRECTORY;
         args.stdoutFilePath.append(args.serviceUnit);
         args.stdoutFilePath.append(L".stdout.log");
     }
- 
+
 *logfile << L"open stdoutFile outputtype = " << args.stdoutOutputType << std::endl;
 *logfile << L"open stdoutFile Path = " << args.stdoutFilePath << std::endl;
     unit_stdout.open(args.stdoutOutputType, args.stdoutFilePath);
@@ -279,6 +288,10 @@ for (auto elem : service_unit_options) {
             args.stderrFilePath = args.stderrOutputType.substr(0, args.stderrOutputType.find_first_of(':')+1);
         }
     }
+    else {
+        args.stderrOutputType = L"journal";
+    }
+
     if (args.stderrFilePath.empty()) {
         args.stderrFilePath = DEFAULT_LOG_DIRECTORY;
         args.stderrFilePath.append(args.serviceUnit);
@@ -304,16 +317,6 @@ for (auto elem : service_unit_options) {
         args.serviceName.erase(remove( args.serviceName.begin(), args.serviceName.end(), '\"' ), args.serviceName.end());
         args.serviceName.erase(remove( args.serviceName.begin(), args.serviceName.end(), '\'' ), args.serviceName.end());
     }
-
-*logfile << "p3" << std::endl;
-    if (!additionalArgs.empty())
-    {
-        if (args.serviceName.empty()) {
-            args.serviceName = additionalArgs[0];
-        }
-        additionalArgs = vector<wstring>(additionalArgs.begin(), additionalArgs.end());
-    }
-
 *logfile << "p4" << std::endl;
 
     if (service_unit_options.count("Service.Type")) {

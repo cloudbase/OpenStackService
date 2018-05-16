@@ -46,41 +46,41 @@ CWrapperService::ProcessSpecialCharacters(std::wstring &ws)
     wchar_t spec_char = ws[0]; 
     while (spec_char) {
         switch(spec_char) {
-	case L'@':
-	    mask |= EXECFLAG_ARG0;
+    case L'@':
+        mask |= EXECFLAG_ARG0;
             ws.erase(0, 1);
-	    spec_char = ws[0];
-	    break;
-	case L'-':
-	    mask |= EXECFLAG_IGNORE_FAIL;
+        spec_char = ws[0];
+        break;
+    case L'-':
+        mask |= EXECFLAG_IGNORE_FAIL;
             ws.erase(0, 1);
-	    spec_char = ws[0];
-	    break;
+        spec_char = ws[0];
+        break;
 
-	case L'+':
-	    mask |= EXECFLAG_FULL_PRIVELEGE;
+    case L'+':
+        mask |= EXECFLAG_FULL_PRIVELEGE;
             ws.erase(0, 1);
-	    spec_char = ws[0];
-	    if (spec_char == '!') {
-	        *logfile << L"Illegal combination of special execuatble chars +, ! and !! in commandline " << ws << std::endl;
+        spec_char = ws[0];
+        if (spec_char == '!') {
+            *logfile << L"Illegal combination of special execuatble chars +, ! and !! in commandline " << ws << std::endl;
             }
-	    break;
+        break;
 
-	case L'!':
-	    if (ws[1] == L'!') {
-	        mask |= EXECFLAG_AMBIENT_PRIVELEGE;
+    case L'!':
+        if (ws[1] == L'!') {
+            mask |= EXECFLAG_AMBIENT_PRIVELEGE;
                 ws.erase(0, 2);
             }
-	    else {
-	        mask |= EXECFLAG_ELEVATE_PRIVELEGE;
+        else {
+            mask |= EXECFLAG_ELEVATE_PRIVELEGE;
                 ws.erase(0, 2);
             }
-	    spec_char = ws[0];
-	    break;
+        spec_char = ws[0];
+        break;
 
-	default:
-	     return mask;
-	}
+    default:
+         return mask;
+    }
     }
 
     return mask;
@@ -97,7 +97,7 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
 
     if (!params.execStartPre.empty()) {
         for (auto ws: params.execStartPre) {
-	    m_ExecStartPreFlags.push_back(ProcessSpecialCharacters(ws));
+            m_ExecStartPreFlags.push_back(ProcessSpecialCharacters(ws));
             wstring cmdline = params.szShellCmdPre;
             cmdline.append(ws);
             cmdline.append(params.szShellCmdPost);
@@ -114,7 +114,7 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
 
     if (!params.execStartPost.empty()) {
         for (auto ws: params.execStartPost) {
-	    m_ExecStartPostFlags.push_back(ProcessSpecialCharacters(ws));
+        m_ExecStartPostFlags.push_back(ProcessSpecialCharacters(ws));
             wstring cmdline = params.szShellCmdPre;
             cmdline.append(ws);
             cmdline.append(params.szShellCmdPost);
@@ -131,7 +131,7 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
 
     if (!params.execStopPost.empty()) {
         for (auto ws: params.execStopPost) {
-	    m_ExecStopPostFlags.push_back(ProcessSpecialCharacters(ws));
+        m_ExecStopPostFlags.push_back(ProcessSpecialCharacters(ws));
             wstring cmdline = params.szShellCmdPre;
             cmdline.append(ws);
             cmdline.append(params.szShellCmdPost);
@@ -461,7 +461,6 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 
     SetServiceStatus(SERVICE_RUNNING);
 
-
     if (m_ServiceType == SERVICE_TYPE_FORKING) {
         waitforfinish = false;
     }
@@ -471,7 +470,7 @@ void CWrapperService::OnStart(DWORD dwArgc, LPWSTR *lpszArgv)
 *logfile << L"start " << m_ServiceName << std::endl;
     if (!EvaluateConditions()) {
         SetServiceStatus(SERVICE_STOPPED);
-	return;
+    return;
     }
 
     // If files before exist, bail.
@@ -553,15 +552,15 @@ for (auto after : this->m_ServicesAfter) {
         for( int i = 0;  i < m_ExecStartPreCmdLine.size(); i++ ) {
             auto ws = m_ExecStartPreCmdLine[i];
             *logfile << L"Running ExecStartPre command: " << ws.c_str();
-	          // to do, add special char processing
-	          try {
+              // to do, add special char processing
+            try {
                 StartProcess(ws.c_str(), true); 
-	          }
-	          catch(...) {
-	             if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
+              }
+              catch(...) {
+                 if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
                     *logfile << L"Error in ExecStartPre command: " << ws.c_str() << "exiting" << std::endl;
-	        	   }
-	         }
+                   }
+             }
         }
     }
 
@@ -570,24 +569,9 @@ for (auto after : this->m_ServicesAfter) {
 *logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
 
 
-    auto processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
-
-#if 0
-    m_dwProcessId = processInformation.dwProcessId;
-    m_hProcess = processInformation.hProcess;
-
-    DWORD tid;
-    m_WaitForProcessThread = ::CreateThread(NULL, 0, WaitForProcessThread, this, 0, &tid);
-
-    /*
-    // We will send CTRL+C to the child process to end it. Set the handler to NULL in parent process.
-    if(!::SetConsoleCtrlHandler(NULL, TRUE))
-    {
-        throw GetLastError();
+    if (!m_ExecStartCmdLine.empty()) {
+        auto processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
     }
-    */
-
-#endif
 
     if (!m_ExecStartPostCmdLine.empty())
     {
@@ -597,20 +581,20 @@ for (auto after : this->m_ServicesAfter) {
             auto ws = m_ExecStartPostCmdLine[i];
             os << L"Running ExecStartPost command: " << ws.c_str();
             *logfile << os.str() << std::endl;
-	    try {
+        try {
                 StartProcess(ws.c_str(), true);
-	    }
-	    catch(...) {
-	        if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
+        }
+        catch(...) {
+            if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
                     *logfile << L"Error in ExecStartPre command: " << ws.c_str() << "exiting" << std::endl;
-		}
-	    }
+        }
+        }
         }
     }
 
     if (m_ServiceType == SERVICE_TYPE_SIMPLE || m_ServiceType == SERVICE_TYPE_ONESHOT) {
         SetServiceStatus(SERVICE_STOPPED);
-    }	
+    }    
 
 *logfile << L"exit service OnStart: " << std::endl;
 }
@@ -715,156 +699,156 @@ CWrapperService::EvaluateConditions()
     if (!m_ConditionArchitecture.empty()) {
        for( auto ws: m_ConditionArchitecture) {
            if (!EvalConditionArchitecture(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionVirtualization.empty()) {
        for( auto ws: m_ConditionVirtualization) {
            if (!EvalConditionVirtualization(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionHost.empty()) {
        for( auto ws: m_ConditionHost) {
            if (!EvalConditionHost(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionKernelCommandLine.empty()) {
        for( auto ws: m_ConditionKernelCommandLine) {
            if (!EvalConditionKernelCommandLine(ws)) {
-	       return false;
-	   }
+           return false;
+       }
        }
     }
     if (!m_ConditionKernelVersion.empty()) {
        for( auto ws: m_ConditionKernelVersion) {
            if (!EvalConditionKernelVersion(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionSecurity.empty()) {
        for( auto ws: m_ConditionSecurity) {
            if (!EvalConditionSecurity(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionCapability.empty()) {
        for( auto ws: m_ConditionCapability) {
            if (!EvalConditionCapability(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionACPower.empty()) {
        for( auto ws: m_ConditionACPower) {
            if (!EvalConditionACPower(ws)) {
-	       return false;
-	   }
+           return false;
+       }
        }
     }
     if (!m_ConditionNeedsUpdate.empty()) {
        for( auto ws: m_ConditionNeedsUpdate) {
            if (!EvalConditionNeedsUpdate(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionFirstBoot.empty()) {
        for( auto ws: m_ConditionFirstBoot) {
            if (!EvalConditionFirstBoot(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionPathExists.empty()) {
        for( auto ws: m_ConditionPathExists) {
            if (!EvalConditionPathExists(ws)) {
-	       *logfile << L"Condition failed" << std::endl;
-	       return false;
-	   }
+           *logfile << L"Condition failed" << std::endl;
+               return false;
+           }
        }
     }
     if (!m_ConditionPathExistsGlob.empty()) {
        for( auto ws: m_ConditionPathExistsGlob) {
            if (!EvalConditionPathExistsGlob(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionPathIsDirectory.empty()) {
        for( auto ws: m_ConditionPathIsDirectory) {
            if (!EvalConditionPathIsDirectory(ws)) {
-	       return false;
-	   }
+           return false;
+       }
        }
     }
     if (!m_ConditionPathIsSymbolicLink.empty()) {
        for( auto ws: m_ConditionPathIsSymbolicLink) {
            if (!EvalConditionPathIsSymbolicLink(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionPathIsMountPoint.empty()) {
        for( auto ws: m_ConditionPathIsMountPoint) {
            if (!EvalConditionPathIsMountPoint(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionPathIsReadWrite.empty()) {
        for( auto ws: m_ConditionPathIsReadWrite) {
            if (!EvalConditionPathIsReadWrite(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionDirectoryNotEmpty.empty()) {
        for( auto ws: m_ConditionDirectoryNotEmpty) {
            if (!EvalConditionDirectoryNotEmpty(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionFileNotEmpty.empty()) {
        for( auto ws: m_ConditionFileNotEmpty) {
            if (!EvalConditionFileNotEmpty(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionFileIsExecutable.empty()) {
        for( auto ws: m_ConditionFileIsExecutable) {
            if (!EvalConditionFileIsExecutable(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionUser.empty()) {
        for( auto ws: m_ConditionUser) {
            if (!EvalConditionUser(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionGroup.empty()) {
        for( auto ws: m_ConditionGroup) {
            if (!EvalConditionGroup(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
     if (!m_ConditionControlGroupController.empty()) {
        for( auto ws: m_ConditionControlGroupController) {
            if (!EvalConditionControlGroupController(ws)) {
-	       return false;
-	   }
+               return false;
+           }
        }
     }
 
