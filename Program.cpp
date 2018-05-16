@@ -87,7 +87,7 @@ struct CLIArgs
     wstring stdoutOutputType;
     wstring stdoutFilePath;
     enum CWrapperService::RestartAction restartAction;
-    int  restartMilliseconds;
+    int  restartMillis;
 };
 
 CLIArgs ParseArgs(int argc, wchar_t *argv[]);
@@ -113,6 +113,40 @@ wstring DEFAULT_START_ACTION = L"Write-Host \"No Start Action\" ";
 
 CWrapperService::ServiceParams params;
 
+
+static int string_duration_to_millis(wstring dur)
+
+{ int millis = 0;
+
+
+    if (dur.find_first_not_of(L"0123456789") == std::string::npos) {
+        // Then it is just a decimal number of seconds
+        millis = std::stoi(dur);
+        return millis*1000;
+    }
+    else if (dur.find(L"ns") != std::string::npos) {
+        return 1;  // We just don't resolve down to nanoseconds
+    }
+    else if  (dur.find(L"ms") != std::string::npos) {
+        wstring millistr = dur.substr(dur.find(L"ms"));
+        millis = std::stoi(millistr);
+        return millis;
+    }
+    else if (dur.find(L"hour") != std::string::npos) {
+        return -1;
+    }
+    else if (dur.find(L"hr") != std::string::npos) {
+        return -1;
+    }
+    else if (dur.find(L"min") != std::string::npos) {
+        wstring minutes = dur.substr(dur.find(L"min"));
+        minutes = minutes.substr(minutes.find_last_of(L"012345678"));
+        millis = std::stoi(minutes)*60000;
+        return millis;
+    }
+    return -1;
+
+}
 
 static void EscapeForPowershell(std::wstring &cmdline)
 
@@ -186,6 +220,7 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
         ("Service.StandardError", wvalue<wstring>(), "standard error")
         ("Service.BusName", wvalue<wstring>(), "Systemd dbus name. Used only for resolving service type")
         ("Service.Restart", wvalue<wstring>(), "restart policy for the service")
+        ("Service.RestartSec", wvalue<wstring>(), "restart policy for the service")
         ("Service.WorkingDirectory", wvalue<wstring>(), "working directory")
         ("Service.StartLimitInterval", wvalue<wstring>(), "minimum time between restarts")
         ("Service.KillSignal", wvalue<wstring>(), "signal to send process when stopping. Ignored");
@@ -355,7 +390,39 @@ for (auto elem : service_unit_options) {
             args.serviceType = CWrapperService::SERVICE_TYPE_ONESHOT;
         }
     }
+  
+    if (service_unit_options.count("Service.Restart")) {
+        if (service_unit_options["Service.Restart"].as<std::wstring>().compare(L"no") == 0) {
+            args.restartAction = CWrapperService::RESTART_ACTION_NO;
+        }
+        else if (service_unit_options["Service.Restart"].as<std::wstring>().compare(L"always") == 0) {
+            args.restartAction = CWrapperService::RESTART_ACTION_ALWAYS;
+        }
+        else if (service_unit_options["Service.Restart"].as<std::wstring>().compare(L"on-success") == 0) {
+            args.restartAction = CWrapperService::RESTART_ACTION_ON_SUCCESS;
+        }
+        else if (service_unit_options["Service.Restart"].as<std::wstring>().compare(L"on-failure") == 0) {
+            args.restartAction = CWrapperService::RESTART_ACTION_ON_FAILURE;
+        }
+        else if (service_unit_options["Service.Restart"].as<std::wstring>().compare(L"on-abnormal") == 0) {
+            args.restartAction = CWrapperService::RESTART_ACTION_ON_ABNORMAL;
+        }
+        else if (service_unit_options["Service.Restart"].as<std::wstring>().compare(L"on-abort") == 0) {
+            args.restartAction = CWrapperService::RESTART_ACTION_ON_ABORT;
+        }
+        else if (service_unit_options["Service.Restart"].as<std::wstring>().compare(L"on-watchdog") == 0) {
+            args.restartAction = CWrapperService::RESTART_ACTION_ON_WATCHDOG;
+        }
+        else {
+            args.restartAction = CWrapperService::RESTART_ACTION_UNDEFINED;
+        }
+    }
 
+    if (service_unit_options.count("Service.RestartSec")) {
+        wstring str_sec = service_unit_options["Service.Restart"].as<std::wstring>();
+        int millis = string_duration_to_millis(str_sec);
+        args.restartMillis = millis;
+    }
 
 *logfile << "p4.1 service type " << args.serviceType << std::endl;
     if (service_unit_options.count("Unit.Requisite")) {
