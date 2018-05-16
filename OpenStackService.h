@@ -38,6 +38,17 @@ public:
        SERVICE_TYPE_IDLE
     };
 
+    enum RestartAction {
+       RESTART_ACTION_UNDEFINED,
+       RESTART_ACTION_NO,
+       RESTART_ACTION_ALWAYS,
+       RESTART_ACTION_ON_SUCCESS,
+       RESTART_ACTION_ON_FAILURE,
+       RESTART_ACTION_ON_ABNORMAL,
+       RESTART_ACTION_ON_ABORT,
+       RESTART_ACTION_ON_WATCHDOG
+    };
+
     // The parameter list has gotten very long. This way we have a packet of params
     // with defaults. Since C++ does not have named parameters this allows use to init some
     // and define others
@@ -52,6 +63,8 @@ public:
         std::wstring              execStop;
         std::vector<std::wstring> execStopPost;
         enum ServiceType serviceType;
+        enum RestartAction   restartAction;
+        int  restartMillis;
         BOOL fCanStop;
         BOOL fCanShutdown;
         BOOL fCanPauseContinue;
@@ -93,6 +106,8 @@ public:
             szShellCmdPre(NULL),
             szShellCmdPost(NULL),
             serviceType(SERVICE_TYPE_SIMPLE),
+            restartAction(RESTART_ACTION_NO),
+            restartMillis(INFINITE),
             fCanStop(TRUE),
             fCanShutdown(TRUE),
             fCanPauseContinue(FALSE) {  };
@@ -219,6 +234,10 @@ private:
     HANDLE m_hProcess;
     HANDLE m_WaitForProcessThread;
     enum ServiceType m_ServiceType;
+    enum RestartAction m_RestartAction;
+    int  RestartMillis;
+    int  StartLimitIntervalMillis;
+
     wojournalstream *m_StdErr;
     wojournalstream *m_StdOut;
     volatile BOOL m_IsStopping;
