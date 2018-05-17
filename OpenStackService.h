@@ -65,6 +65,7 @@ public:
         enum ServiceType serviceType;
         enum RestartAction   restartAction;
         int  restartMillis;
+        std::wstring workingDirectory;
         BOOL fCanStop;
         BOOL fCanShutdown;
         BOOL fCanPauseContinue;
@@ -152,6 +153,9 @@ private:
 
     PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess, bool failOnError=false);
     boolean EvaluateConditions();
+    std::wstring ResolveEnvVars(std::wstring str); // Expands any environment variables that are in the 
+                                                   // string. We need to do this for things like directories
+                                         // which are passed before the command processor has time to run.
 
     boolean EvalConditionArchitecture(std::wstring arg);
     boolean EvalConditionVirtualization(std::wstring arg);
@@ -237,6 +241,7 @@ private:
     enum RestartAction m_RestartAction;
     int  m_RestartMillis;
     int  m_StartLimitIntervalMillis;
+    std::wstring m_WorkingDirectory;
 
     wojournalstream *m_StdErr;
     wojournalstream *m_StdOut;

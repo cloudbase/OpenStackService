@@ -219,6 +219,7 @@ for( auto envf : m_EnvironmentFilesPS ) {
     m_ServiceType = params.serviceType;
     m_RestartAction = params.restartAction;
     m_RestartMillis = params.restartMillis;
+    m_WorkingDirectory = params.workingDirectory;
 
     m_StdErr = params.stdErr;
     m_StdOut = params.stdOut;
@@ -243,6 +244,17 @@ CWrapperService::~CWrapperService(void)
         ::CloseHandle(m_WaitForProcessThread);
         m_WaitForProcessThread = NULL;
     }
+}
+
+
+std::wstring CWrapperService::ResolveEnvVars(std::wstring arg)
+
+{
+
+    // Parse the string and look up env variables
+    // 2do:
+
+    return L"";
 }
 
 
@@ -408,6 +420,18 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
         lpEnv = (LPVOID)m_envBuf.c_str();
     }
     
+    // Setup the working directory. Expand any environment variables referenced
+
+    wstring cwd;  // This variable manages the storage for the wchar_t * and is easy to work with. It 
+                  // free the storafge at the end of the function. 
+    wchar_t *pWorkingDirectory = NULL;
+    if (!m_WorkingDirectory.empty()) {
+        cwd = ResolveEnvVars(m_WorkingDirectory);
+        if (!cwd.empty()) {
+            pWorkingDirectory = (wchar_t*)cwd.c_str();
+        }
+    }
+
     DWORD tempCmdLineCount = lstrlen(cmdLine) + 1;
     LPWSTR tempCmdLine = new WCHAR[tempCmdLineCount];  //Needed since CreateProcessW may change the contents of CmdLine
     wcscpy_s(tempCmdLine, tempCmdLineCount, cmdLine);
@@ -415,7 +439,7 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
 *logfile << "create process " << cmdLine << std::endl;
 
     BOOL result = ::CreateProcessW(NULL, tempCmdLine, NULL, NULL, TRUE, dwCreationFlags,
-        lpEnv, NULL, &startupInfo, &processInformation);
+        lpEnv, pWorkingDirectory, &startupInfo, &processInformation);
 
     delete[] tempCmdLine;
 
