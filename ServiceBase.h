@@ -85,14 +85,25 @@ protected:
         DWORD dwWaitHint = 0);
 
     // Log a message to the Application event log.
-    void WriteEventLogEntry(PCWSTR pszMessage, WORD wType);
+    static void WriteEventLogEntry(PCWSTR pszServiceName, PCWSTR pszMessage, WORD wType);
 
     // Log an error message to the Application event log.
     void WriteErrorLogEntry(PWSTR pszFunction,
         DWORD dwError = GetLastError());
 
+    wchar_t *Name() { return m_name; };
+
 protected:
     wojournalstream *logfile;
+
+    // The name of the service
+    WCHAR m_name[MAX_SVC_NAME];
+
+    // The status of the service
+    SERVICE_STATUS m_status;
+
+    // The service status handle
+    SERVICE_STATUS_HANDLE m_statusHandle;
 private:
 
     // Entry point for the service. It registers the handler function for the
@@ -118,13 +129,5 @@ private:
     // The singleton service instance.
     static CServiceBase *s_service;
 
-    // The name of the service
-    WCHAR m_name[MAX_SVC_NAME];
-
-    // The status of the service
-    SERVICE_STATUS m_status;
-
-    // The service status handle
-    SERVICE_STATUS_HANDLE m_statusHandle;
 
 };
