@@ -239,6 +239,7 @@ private:
     HANDLE m_WaitForProcessThread;
     enum ServiceType m_ServiceType;
     enum RestartAction m_RestartAction;
+
     int  m_RestartMillis;
     int  m_StartLimitIntervalMillis;
     std::wstring m_WorkingDirectory;
