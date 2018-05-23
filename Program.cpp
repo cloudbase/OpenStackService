@@ -224,7 +224,10 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
         ("Service.RestartSec", wvalue<wstring>(), "restart policy for the service")
         ("Service.WorkingDirectory", wvalue<wstring>(), "working directory")
         ("Service.StartLimitInterval", wvalue<wstring>(), "minimum time between restarts")
-        ("Service.KillSignal", wvalue<wstring>(), "signal to send process when stopping. Ignored");
+        ("Service.KillSignal", wvalue<wstring>(), "signal to send process when stopping. Ignored")
+        ("Service.PermissionStartOnly", wvalue<wstring>(), "not implemented")
+        ("Service.SupplementaryGroups", wvalue<wstring>(), "not implemented")
+        ("Service.User",       wvalue<wstring>(), "not implemented")
         ("Service.LimitNOFILE", wvalue<wstring>(), "maximum number of file handles allowed for this service Not implmenented");
 
     options_description desc{ "Options" };
@@ -280,15 +283,24 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
 *logfile << L"has service unit " << args.serviceUnit.c_str() << std::endl;
 
     *logfile << L"unit path " << args.unitPath << std::endl ;
+#if 0
+try {
 for (auto elem : service_unit_options) {
     try {
-    *logfile << "elem_name ";
-    *logfile << std::wstring(elem.first.begin(), elem.first.end()) << std::endl;
+        *logfile << "elem_name ";
+        *logfile << elem.first.c_str() << std::endl;
+      //  *logfile << std::wstring(elem.first.begin(), elem.first.end()) << std::endl;
     } catch(...) {
         *logfile << "bad elem_name ";
     }
 }
+}
+catch (...) {
+    *logfile << "exception but keep going" << std::endl;
+}
+#endif
 
+*logfile << "zut alors!" << std::endl;
     }
     else {
         // 2do: Else derive the service name from the execStart executable

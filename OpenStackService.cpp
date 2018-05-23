@@ -683,7 +683,7 @@ DWORD WINAPI CWrapperService::WaitForProcessThread(LPVOID lpParam)
     // TODO: think about respawning the child process
     if(!self->m_IsStopping)
     {
-        self->WriteEventLogEntry(L"Child process ended", EVENTLOG_ERROR_TYPE);
+        self->WriteEventLogEntry(self->Name(), L"Child process ended", EVENTLOG_ERROR_TYPE);
         ::ExitProcess(-1);
     }
 
@@ -730,7 +730,7 @@ void WINAPI CWrapperService::KillProcessTree(DWORD dwProcId)
 
 void CWrapperService::OnStop()
 {
-    WriteEventLogEntry(L"Stopping service", EVENTLOG_INFORMATION_TYPE);
+    WriteEventLogEntry(m_name, L"Stopping service", EVENTLOG_INFORMATION_TYPE);
 
     m_IsStopping = TRUE;
 *logfile << L"stopping service " << m_ServiceName.c_str() << std::endl;
@@ -739,7 +739,7 @@ void CWrapperService::OnStop()
         wostringstream os;
         os << L"Running ExecStop command: " << m_ExecStopCmdLine.c_str();
 *logfile << os.str() << std::endl;
-        WriteEventLogEntry(os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
+        WriteEventLogEntry(m_name, os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
         StartProcess(m_ExecStopCmdLine.c_str(), true);
     }
 
