@@ -26,6 +26,7 @@ under the License.
 #include <regex>
 #include <sstream>
 #include <fstream>
+#include <algorithm>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <TlHelp32.h>
@@ -317,6 +318,8 @@ void CWrapperService::GetCurrentEnv()
     LPCWSTR envPair = (LPCWSTR)tmpEnv;
     while (envPair[0])
     {
+
+
         wregex rgx(L"^([^=]*)=(.*)$");
         wsmatch matches;
         wstring envPairStr = envPair;
@@ -324,6 +327,9 @@ void CWrapperService::GetCurrentEnv()
         {
             auto name = matches[1].str();
             auto value = matches[2].str();
+
+            // We uppercase all env var names because they are case insensitive in powershell
+            std::transform(name.begin(), name.end(), name.begin(), ::toupper);
             m_Env[name] = value;
         }
 
@@ -379,8 +385,42 @@ void CWrapperService::LoadPShellEnvVarsFromFile(const wstring& path)
         {
             auto name = boost::algorithm::trim_copy(matches[1].str());
             auto value = boost::algorithm::trim_copy(matches[2].str());
+
+            // Now we need to look for powershell environment variables embedded in the screen
+            size_t pos = 0;
+            while (pos != std::string::npos) {
+                size_t env_var_idx = value.find(L"$env:", pos);
+                if (env_var_idx != std::string::npos) {
+                    wstring env_var;
+                    size_t var_start = env_var_idx+5; // length of $env:
+                    size_t var_end = std::string::npos;
+                    var_end = value.find_first_of(L";", var_start);
+                    if (var_end != std::string::npos) {
+                       env_var = value.substr(var_start, pos-var_end);
+                    }
+                    else {
+                       env_var = value.substr(var_start);
+                    }
+                    // We uppercase all env var names because they are case insensitive in powershell
+                    std::transform(env_var.begin(), env_var.end(), env_var.begin(), ::toupper);
+
+                    *logfile << L"expand m_env[" << env_var << L"] = "  << m_Env[env_var] << std::endl;
+
+                    value.replace(env_var_idx, env_var.length()+5, m_Env[env_var]);
+                    pos = env_var_idx; // We dont have an env there any more, but the env_var could 
+                                       // contain more env_var so we rescan
+
+                    *logfile << L"env_var = " << env_var << L" expanded value = " << value << std::endl;
+                }
+                else {
+                    break;
+                }     
+            }
+
             m_Env[name] = value;
 *logfile << L"PS environment file key = " << name << " val " << value << std::endl;
+
+            
         }
     }
 
@@ -638,7 +678,7 @@ for (auto after : this->m_ServicesAfter) {
 
 *logfile << "process success " << m_ExecStartCmdLine << std::endl;
 
-    switch ( m_RestartAction == RESTART_ACTION_NO ) {
+    switch ( m_RestartAction ) {
     default:
     case RESTART_ACTION_NO:
         SetServiceStatus(SERVICE_STOPPED);
@@ -648,14 +688,25 @@ for (auto after : this->m_ServicesAfter) {
         while (true) {
             // Just keep restarting the main process forever, until stoppe. Wait for it each time
             // we don't rerun the execStartPre or Post actions
-            ::Sleep(m_RestartMillis); // But we respect restartSec.
+*logfile << "Restart in " << m_RestartMillis << " milliseconds" << std::endl;
+            ::SleepEx(m_RestartMillis, TRUE); // But we respect restartSec.
 
+*logfile << "Wait done. Restart" << std::endl;
             if (!m_ExecStartCmdLine.empty()) {
                 SetServiceStatus(SERVICE_RUNNING);
+*logfile << "Restart" << std::endl;
                 processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
+*logfile << "waitfor restarted process " << std::endl;
+                ::WaitForSingleObject(processInformation.hProcess, INFINITE);
+
+                 DWORD exitCode = 0;
+                 BOOL result = ::GetExitCodeProcess(processInformation.hProcess, &exitCode);
+                 ::CloseHandle(processInformation.hProcess);
+
                 SetServiceStatus(SERVICE_STOPPED);
             }
             else {
+*logfile << "No start action. Cannot restart" << std::endl;
                 break;
             }
         }

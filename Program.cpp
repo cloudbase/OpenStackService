@@ -119,8 +119,10 @@ static int string_duration_to_millis(wstring dur)
 
 { int millis = 0;
 
+*logfile << L"restart duration " << dur << std::endl;
+*logfile << L"first not of " << dur.find_first_not_of(L"0123456789 ") << std::endl;
 
-    if (dur.find_first_not_of(L"0123456789") == std::string::npos) {
+    if (dur.find_first_not_of(L"0123456789 ") == std::string::npos) {
         // Then it is just a decimal number of seconds
         millis = std::stoi(dur);
         return millis*1000;
@@ -439,7 +441,7 @@ catch (...) {
     }
 
     if (service_unit_options.count("Service.RestartSec")) {
-        wstring str_sec = service_unit_options["Service.Restart"].as<std::wstring>();
+        wstring str_sec = service_unit_options["Service.RestartSec"].as<std::wstring>();
         int millis = string_duration_to_millis(str_sec);
         args.restartMillis = millis;
     }

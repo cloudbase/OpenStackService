@@ -19,6 +19,7 @@
 
 #include <ios>
 #include <ostream>
+#include <fstream>
 #include <iostream>
 #include "windows.h"
 
@@ -84,6 +85,7 @@ public:
         m_console_output  = false;
         m_file_output     = false;
         m_eventlog_output = false;
+        m_console = std::wofstream("c:/var/log/services.log", std::ofstream::app);
     };
 
     basic_journalstreambuf(const basic_journalstreambuf<cT, traits> &&from):
@@ -96,6 +98,7 @@ public:
         this->m_console_output  = from.m_console_output;
         this->m_file_output     = from.m_file_output;
         this->m_eventlog_output = from.m_eventlog_output;
+        m_console = std::wofstream("c:/var/log/services.log", std::ofstream::app);
     };
 
     ~basic_journalstreambuf() { };
@@ -117,12 +120,12 @@ public:
 
              std::wcerr << m_buffer << std::endl;
              if (m_console_output) {
-                 std::wcerr << m_buffer;
+                 m_console << m_buffer;
+                 m_console.flush();
              }
              if (m_file_output && m_filehandle != INVALID_HANDLE_VALUE) {
                   DWORD result = WriteFile(m_filehandle, m_buffer, (m_current-m_buffer)*sizeof(m_buffer[0]), NULL, NULL);
-		              FlushFileBuffers(m_filehandle);
-
+		  FlushFileBuffers(m_filehandle);
              }
              m_current = m_buffer;
         }
@@ -134,7 +137,7 @@ public:
             *m_current = '\0';
              std::wcerr << L"journal stream: sync :" << m_buffer << std::endl;
              if (m_console_output) {
-                 std::wcerr << m_buffer;
+                 m_console << m_buffer;
              }
              if (m_file_output && m_filehandle != INVALID_HANDLE_VALUE) {
                   DWORD result = WriteFile(m_filehandle, m_buffer, (m_current-m_buffer)*sizeof(m_buffer[0]), NULL, NULL);
@@ -148,6 +151,7 @@ public:
 protected:
     static const int MAX_BUFFER_SIZE = 2048;
     friend class wojournalstream; 
+    std::wofstream m_console;
     HANDLE m_filehandle;
     boolean m_console_output;
     boolean m_file_output;
@@ -197,7 +201,6 @@ class wojournalstream:
             buf.set_output_eventlog(false);
         };
     
- 
     private:
         HANDLE m_filehandle;
         enum OUTPUT_TYPE m_output_type;
