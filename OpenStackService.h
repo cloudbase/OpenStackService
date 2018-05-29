@@ -142,16 +142,18 @@ private:
     static const unsigned EXECFLAG_ELEVATE_PRIVELEGE = 0x000000008;
     static const unsigned EXECFLAG_AMBIENT_PRIVELEGE = 0x000000008; // !!
 
+    static DWORD WINAPI ServiceThread(LPVOID param); // Pass this pointer
+
     void GetCurrentEnv();
     void LoadEnvVarsFromFile(const std::wstring& path);
     void LoadPShellEnvVarsFromFile(const std::wstring& path);
 
     static DWORD WINAPI WaitForProcessThread(LPVOID lpParam);
-    static void WINAPI KillProcessTree(DWORD dwProcId);
+    void WINAPI KillProcessTree(DWORD dwProcId);
     static enum OUTPUT_TYPE StrToOutputType( std::wstring ws, std::wstring *path );
     unsigned ProcessSpecialCharacters( std::wstring &ws);
 
-    PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, bool waitForProcess, bool failOnError=false);
+    PROCESS_INFORMATION StartProcess(LPCWSTR cmdLine, DWORD processFlags, bool waitForProcess, bool failOnError=false);
     boolean EvaluateConditions();
     std::wstring ResolveEnvVars(std::wstring str); // Expands any environment variables that are in the 
                                                    // string. We need to do this for things like directories
@@ -237,6 +239,10 @@ private:
     DWORD m_dwProcessId;
     HANDLE m_hProcess;
     HANDLE m_WaitForProcessThread;
+
+    HANDLE m_hServiceThread;
+    DWORD  m_dwServiceThreadId;
+
     enum ServiceType m_ServiceType;
     enum RestartAction m_RestartAction;
     int  m_RestartMillis;

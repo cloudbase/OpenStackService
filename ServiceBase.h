@@ -51,6 +51,7 @@ public:
     // Stop the service.
     void Stop();
 
+	static boolean bDebug;
 protected:
 
     // When implemented in a derived class, executes when a Start command is
@@ -93,8 +94,9 @@ protected:
 
     wchar_t *Name() { return m_name; };
 
+
 protected:
-    wojournalstream *logfile;
+    static wojournalstream *logfile;
 
     // The name of the service
     WCHAR m_name[MAX_SVC_NAME];
@@ -104,6 +106,7 @@ protected:
 
     // The service status handle
     SERVICE_STATUS_HANDLE m_statusHandle;
+
 private:
 
     // Entry point for the service. It registers the handler function for the
@@ -128,6 +131,5 @@ private:
 
     // The singleton service instance.
     static CServiceBase *s_service;
-
-
+    static HANDLE hSvcStopEvent;
 };

@@ -110,7 +110,7 @@ public:
 
     typename traits::int_type overflow(typename traits::int_type wc) override
     {
-        char c = wc;
+        char c = (char) wc;
         
         if (m_current < m_bufferlimit) {
             *m_current++ = c;

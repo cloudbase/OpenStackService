@@ -234,6 +234,7 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
 
     options_description desc{ "Options" };
     desc.add_options()
+        ("debug", "run from the command line")
         ("service-unit", wvalue<wstring>(), "Service uses the service unit file in %SystemDrive%/etc/SystemD/active" )
         ("log-file,l", wvalue<wstring>(), "Log file containing  the redirected STD OUT and ERR of the child process")
         ("service-name", wvalue<wstring>(), "Service name");
@@ -245,29 +246,33 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     auto additionalArgs = collect_unrecognized(parsed.options, include_positional);
     notify(vm);
     
+    if (vm.count("debug")) {
+        CServiceBase::bDebug = true;
+    }
+
 *logfile << L"check for service unit" << std::endl;
     if (vm.count("service-unit")) {
         args.unitPath = vm["service-unit"].as<wstring>();
         string unit_path( args.unitPath.begin(), args.unitPath.end());
-		std::ifstream service_unit_file;
-		std::string service_unit_contents;
-		try {
-			
-			service_unit_file.open(unit_path.c_str(), ios::in);
-			if (!service_unit_file.is_open()) {
-				*logfile << L"counldnt open" << std::endl;
-			}
+        std::ifstream service_unit_file;
+        std::string service_unit_contents;
+        try {
+            
+            service_unit_file.open(unit_path.c_str(), ios::in);
+            if (!service_unit_file.is_open()) {
+                *logfile << L"counldnt open" << std::endl;
+            }
 
-			//service_unit_contents = std::string((std::istreambuf_iterator<char>()), std::istreambuf_iterator<char>());
-			char buf[256];
-			service_unit_file.getline(buf, 256);
+            //service_unit_contents = std::string((std::istreambuf_iterator<char>()), std::istreambuf_iterator<char>());
+            char buf[256];
+            service_unit_file.getline(buf, 256);
 
-			service_unit_file.clear();
-			service_unit_file.seekg(0, std::ios::beg);
-		}
-		catch (...) {
-			*logfile << L"Problems reading" << std::endl;
-		}
+            service_unit_file.clear();
+            service_unit_file.seekg(0, std::ios::beg);
+        }
+        catch (...) {
+            *logfile << L"Problems reading" << std::endl;
+        }
 
 *logfile << L"opened service unit " << service_unit_contents.c_str() << std::endl;
         auto config_parsed = parse_config_file<char>(service_unit_file, config, true);
@@ -737,6 +742,13 @@ int wmain(int argc, wchar_t *argv[])
 *logfile << msg << '\n';
             throw exception(msg);
         }
+        if (CWrapperService::bDebug) {
+            // For offline debug 
+
+            ::Sleep(10000); // Let the service start
+            service.Stop();
+        }
+
         return 0;
     }
     catch (exception &ex)
@@ -744,4 +756,5 @@ int wmain(int argc, wchar_t *argv[])
 *logfile << ex.what() << '\n';
         return -1;
     }
+
 }

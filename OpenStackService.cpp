@@ -27,6 +27,7 @@ under the License.
 #include <sstream>
 #include <fstream>
 #include <algorithm>
+#include <boost/stacktrace.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <TlHelp32.h>
@@ -138,7 +139,6 @@ CWrapperService::CWrapperService(struct CWrapperService::ServiceParams &params)
             cmdline.append(params.szShellCmdPost);
             m_ExecStopPostCmdLine.push_back(cmdline);
         }
-
     }
 
     if (!params.files_before.empty()) {
@@ -228,12 +228,19 @@ for( auto envf : m_EnvironmentFilesPS ) {
     m_WaitForProcessThread = NULL;
     m_dwProcessId = 0;
     m_hProcess   = NULL;
+    m_dwProcessId = 0;
+    m_hServiceThread = NULL;
+    m_dwServiceThreadId = 0;
+    m_hProcess   = NULL;
     m_IsStopping = FALSE;
 }
 
 CWrapperService::~CWrapperService(void)
 
 {
+*logfile << L"~CWrapperService destructor " << std::endl;
+
+
     if (m_hProcess)
     {
         ::CloseHandle(m_hProcess);
@@ -427,7 +434,7 @@ void CWrapperService::LoadPShellEnvVarsFromFile(const wstring& path)
 }
 
 
-PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForProcess, bool failOnError)
+PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, DWORD processFlags, bool waitForProcess, bool failOnError)
 
 {
     PROCESS_INFORMATION processInformation;
@@ -450,7 +457,7 @@ PROCESS_INFORMATION CWrapperService::StartProcess(LPCWSTR cmdLine, bool waitForP
         startupInfo.hStdInput = NULL;
     }
 
-    DWORD dwCreationFlags = CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
+    DWORD dwCreationFlags = processFlags | CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT;
 
     // Read the environment every time we start, but read it once per start
 
@@ -575,12 +582,6 @@ for (auto before : this->m_ServicesBefore) {
 for (auto after : this->m_ServicesAfter) {
    *logfile << L"after service" << after << std::endl;
 }
-*logfile << L"WaitForDependents = " << m_ServicesBefore.size() << std::endl;
-    if (!WaitForDependents()) {
-            *logfile << L"Failure in WaitForDepenents" << std::endl;
-            throw ERROR_SERVICE_DEPENDENCY_FAIL;
-            return;
-    }
 
     // OK. We are going to launch. First resolve the environment
 
@@ -617,7 +618,7 @@ for (auto after : this->m_ServicesAfter) {
             *logfile << L"Running ExecStartPre command: " << ws.c_str();
               // to do, add special char processing
             try {
-                StartProcess(ws.c_str(), true); 
+                StartProcess(ws.c_str(), 0, true); 
             }
             catch(...) {
                  if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
@@ -629,11 +630,27 @@ for (auto after : this->m_ServicesAfter) {
 
     *logfile << L"Starting service: " << m_ServiceName << std::endl;
 
+
 *logfile << L"starting cmd " << m_ExecStartCmdLine.c_str() << std::endl;
 
-    PROCESS_INFORMATION processInformation;
-    if (!m_ExecStartCmdLine.empty()) {
-        processInformation = StartProcess(m_ExecStartCmdLine.c_str(), false);
+    if (m_hServiceThread != NULL ) {
+*logfile << L"service thread is already running" << std::endl;
+         // 
+    }
+    else {
+
+        // Spawn Service Thread
+        m_hServiceThread = CreateThread( 
+                NULL,                   // default security attributes
+                1024*1024*1024,         // use 1gb  stack size  
+                ServiceThread,          // thread function name
+                this,                   // argument to thread function 
+                0,                      // use default creation flags 
+                &m_dwServiceThreadId);   // returns the thread identifier 
+    
+        if (m_hServiceThread == NULL ) {
+             throw ::GetLastError();
+        }
     }
 
     if (!m_ExecStartPostCmdLine.empty())
@@ -645,7 +662,7 @@ for (auto after : this->m_ServicesAfter) {
             os << L"Running ExecStartPost command: " << ws.c_str();
             *logfile << os.str() << std::endl;
             try {
-                StartProcess(ws.c_str(), true);
+                StartProcess(ws.c_str(), 0, true);
             }
             catch(...) {
                 if (!(m_ExecStartPreFlags[i] & EXECFLAG_IGNORE_FAIL)) {
@@ -655,73 +672,114 @@ for (auto after : this->m_ServicesAfter) {
         }
     }
 
-*logfile << "waitfor main process " << std::endl;
-    ::WaitForSingleObject(processInformation.hProcess, INFINITE);
-
-    DWORD exitCode = 0;
-    BOOL result = ::GetExitCodeProcess(processInformation.hProcess, &exitCode);
-    ::CloseHandle(processInformation.hProcess);
-
-    if (!result || exitCode)
-    {
-        wostringstream os;
-        if (!result) {
-            *logfile << L"GetExitCodeProcess failed";
-        }
-        else {
-            *logfile << L"Command \"" << m_ExecStartCmdLine << L"\" failed with exit code: " << exitCode;
-        }
-
-        string str = wstring_convert<codecvt_utf8<WCHAR>>().to_bytes(os.str());
-        throw exception(str.c_str());
-    }
-
-*logfile << "process success " << m_ExecStartCmdLine << std::endl;
-
-    switch ( m_RestartAction ) {
-    default:
-    case RESTART_ACTION_NO:
-        SetServiceStatus(SERVICE_STOPPED);
-        break;
-
-    case RESTART_ACTION_ALWAYS:
-        while (true) {
-            // Just keep restarting the main process forever, until stoppe. Wait for it each time
-            // we don't rerun the execStartPre or Post actions
-*logfile << "Restart in " << m_RestartMillis << " milliseconds" << std::endl;
-            ::SleepEx(m_RestartMillis, TRUE); // But we respect restartSec.
-
-*logfile << "Wait done. Restart" << std::endl;
-            if (!m_ExecStartCmdLine.empty()) {
-                SetServiceStatus(SERVICE_RUNNING);
-*logfile << "Restart" << std::endl;
-                processInformation = StartProcess(m_ExecStartCmdLine.c_str(), true);
-*logfile << "waitfor restarted process " << std::endl;
-                ::WaitForSingleObject(processInformation.hProcess, INFINITE);
-
-                 DWORD exitCode = 0;
-                 BOOL result = ::GetExitCodeProcess(processInformation.hProcess, &exitCode);
-                 ::CloseHandle(processInformation.hProcess);
-
-                SetServiceStatus(SERVICE_STOPPED);
-            }
-            else {
-*logfile << "No start action. Cannot restart" << std::endl;
-                break;
-            }
-        }
-        break;
-    case RESTART_ACTION_ON_SUCCESS:
-    case RESTART_ACTION_ON_FAILURE:
-    case RESTART_ACTION_ON_ABNORMAL:
-    case RESTART_ACTION_ON_ABORT:
-    case RESTART_ACTION_ON_WATCHDOG:
-        // 2do
-        break;
-    }    
-
 *logfile << L"exit service OnStart: " << std::endl;
 }
+
+
+
+DWORD WINAPI CWrapperService::ServiceThread(LPVOID param)
+
+{ 
+    CWrapperService *self = (CWrapperService *)param;
+    DWORD exitCode = 0;
+    boolean done = false;
+
+    boolean waitforfinish = true;
+
+*logfile << L"WaitForDependents = " << std::endl;
+
+    self->SetServiceStatus(SERVICE_START_PENDING);
+    if (!self->WaitForDependents()) {
+        *logfile << L"Failure in WaitForDepenents" << std::endl;
+        return ERROR_SERVICE_DEPENDENCY_FAIL;
+    }
+
+    do {
+        self->SetServiceStatus(SERVICE_RUNNING);
+        self->m_IsStopping = FALSE;
+    
+        *logfile << L"Starting service: " << self->m_ServiceName << std::endl;
+    
+    *logfile << L"starting cmd " << self->m_ExecStartCmdLine.c_str() << std::endl;
+    
+        PROCESS_INFORMATION processInformation;
+        if (!self->m_ExecStartCmdLine.empty()) {
+            processInformation = self->StartProcess(self->m_ExecStartCmdLine.c_str(), CREATE_NEW_PROCESS_GROUP, false);
+            self->m_dwProcessId = processInformation.dwProcessId;
+    
+    *logfile << "waitfor main process " << std::endl;
+           ::WaitForSingleObject(processInformation.hProcess, INFINITE);
+    
+            BOOL result = ::GetExitCodeProcess(processInformation.hProcess, &exitCode);
+            ::CloseHandle(processInformation.hProcess);
+    
+            if (!result || exitCode)
+            {
+                wostringstream os;
+                if (!result) {
+                    *logfile << L"GetExitCodeProcess failed";
+                }
+                else {
+                    *logfile << L"Command \"" << self->m_ExecStartCmdLine << L"\" failed with exit code: " << exitCode;
+                }
+                return exitCode;
+            }
+        }
+    
+    *logfile << "process success " << self->m_ExecStartCmdLine << std::endl;
+    
+        switch ( self->m_RestartAction ) {
+        default:
+        case RESTART_ACTION_NO:
+            done = true;
+            break;
+    
+        case RESTART_ACTION_ALWAYS:
+            done = false; 
+            self->SetServiceStatus(SERVICE_STOPPED);
+            *logfile << L"Restart always in " << self->m_RestartMillis << L" milliseconds" << std::endl;
+            ::SleepEx(self->m_RestartMillis, TRUE);
+            *logfile << L"Restart always" << std::endl;
+            break;
+
+        case RESTART_ACTION_ON_SUCCESS:
+            if (exitCode != S_OK) {
+               done = true;
+            }
+            else {
+                self->SetServiceStatus(SERVICE_STOPPED);
+                *logfile << L"Restart on success in " << self->m_RestartMillis << L" milliseconds" << std::endl;
+                ::SleepEx(self->m_RestartMillis, TRUE); // But we respect restartSec.
+            }
+            break;
+
+        case RESTART_ACTION_ON_FAILURE:
+            if (exitCode != S_OK) {
+               done = true;
+            }
+            else {
+                self->SetServiceStatus(SERVICE_STOPPED);
+                *logfile << L"Restart on success in " << self->m_RestartMillis << L" milliseconds" << std::endl;
+                ::SleepEx(self->m_RestartMillis, TRUE); // But we respect restartSec.
+            }
+            break;
+
+        case RESTART_ACTION_ON_ABNORMAL:
+        case RESTART_ACTION_ON_ABORT:
+        case RESTART_ACTION_ON_WATCHDOG:
+            // 2do: check the exit code
+*logfile << "Restart in " << self->m_RestartMillis << " milliseconds" << std::endl;
+            ::SleepEx(self->m_RestartMillis, TRUE); // But we respect restartSec.
+            break;
+        }    
+    } while (!done);
+
+*logfile << L"exit service OnStart: " << std::endl;
+    self->SetServiceStatus(SERVICE_STOPPED);
+    return S_OK;
+
+}
+
 
 DWORD WINAPI CWrapperService::WaitForProcessThread(LPVOID lpParam)
 {
@@ -747,6 +805,7 @@ void WINAPI CWrapperService::KillProcessTree(DWORD dwProcId)
     memset(&pe, 0, sizeof(PROCESSENTRY32));
     pe.dwSize = sizeof(PROCESSENTRY32);
 
+*logfile << L"service kill process tree " << std::endl;
     HANDLE hSnap = :: CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
     if (::Process32First(hSnap, &pe))
@@ -761,7 +820,13 @@ void WINAPI CWrapperService::KillProcessTree(DWORD dwProcId)
                 HANDLE hProc = ::OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe.th32ProcessID);
                 if (hProc)
                 {
-                    ::TerminateProcess(hProc, 0);
+                   
+                    if (!GenerateConsoleCtrlEvent( CTRL_BREAK_EVENT, pe.th32ProcessID)) {
+                        // Complain
+                    }
+                    else if (::WaitForSingleObject(hProc, 10000) == WAIT_TIMEOUT) {
+                        ::TerminateProcess(hProc, 0);
+                    }
                     ::CloseHandle(hProc);
                 }
             }
@@ -771,6 +836,14 @@ void WINAPI CWrapperService::KillProcessTree(DWORD dwProcId)
         HANDLE hProc = ::OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcId);
         if (hProc)
         {
+            if (!GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, m_dwProcessId )) {
+                // Complain
+                DWORD errcode = GetLastError();
+                *logfile << L"could not send break event to " << m_ServiceName  << "error code " << errcode << std::endl;
+            }
+            if (::WaitForSingleObject(hProc, 10000) == WAIT_TIMEOUT) {
+                *logfile << L"did not respond to break event: " << m_ServiceName  << std::endl;
+            }
             ::TerminateProcess(hProc, 1);
             ::CloseHandle(hProc);
         }
@@ -791,10 +864,18 @@ void CWrapperService::OnStop()
         os << L"Running ExecStop command: " << m_ExecStopCmdLine.c_str();
 *logfile << os.str() << std::endl;
         WriteEventLogEntry(m_name, os.str().c_str(), EVENTLOG_INFORMATION_TYPE);
-        StartProcess(m_ExecStopCmdLine.c_str(), true);
+        StartProcess(m_ExecStopCmdLine.c_str(), 0, true);
     }
 
+*logfile << L"kill stopping service " << m_ServiceName.c_str() << std::endl;
     KillProcessTree(m_dwProcessId);
+    ::TerminateThread(m_hServiceThread, ERROR_PROCESS_ABORTED);
+*logfile << L"service thread wait for terminate " << m_ServiceName.c_str() << std::endl;
+    ::WaitForSingleObject(m_hServiceThread, INFINITE);
+*logfile << L"service thread terminated " << m_ServiceName.c_str() << std::endl;
+    ::CloseHandle(m_hServiceThread);
+
+    m_hServiceThread = INVALID_HANDLE_VALUE;
 
     if (!m_ExecStopPostCmdLine.empty())
     {
@@ -803,10 +884,9 @@ void CWrapperService::OnStop()
         for( auto ws: m_ExecStopPostCmdLine) {
             os << L"Running ExecStopPost command: " << ws.c_str();
             *logfile << os.str() << std::endl;
-            StartProcess(ws.c_str(), true);
+            StartProcess(ws.c_str(), 0, true);
         }
     }
-
 
     ::CloseHandle(m_hProcess);
     m_hProcess = NULL;
