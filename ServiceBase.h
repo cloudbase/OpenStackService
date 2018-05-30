@@ -19,7 +19,9 @@
 
 #pragma once
 
+#include <fstream>
 #include <windows.h>
+#include "journalstream.h"
 
 #define MAX_SVC_NAME 256
 
@@ -38,6 +40,7 @@ public:
     // service can be stopped, paused and continued, or be notified when
     // system shutdown occurs.
     CServiceBase(LPCWSTR pszServiceName,
+        class wojournalstream *logfile, 
         BOOL fCanStop = TRUE,
         BOOL fCanShutdown = TRUE,
         BOOL fCanPauseContinue = FALSE);
@@ -48,6 +51,7 @@ public:
     // Stop the service.
     void Stop();
 
+	static boolean bDebug;
 protected:
 
     // When implemented in a derived class, executes when a Start command is
@@ -82,11 +86,26 @@ protected:
         DWORD dwWaitHint = 0);
 
     // Log a message to the Application event log.
-    void WriteEventLogEntry(PCWSTR pszMessage, WORD wType);
+    static void WriteEventLogEntry(PCWSTR pszServiceName, PCWSTR pszMessage, WORD wType);
 
     // Log an error message to the Application event log.
     void WriteErrorLogEntry(PWSTR pszFunction,
         DWORD dwError = GetLastError());
+
+    wchar_t *Name() { return m_name; };
+
+
+protected:
+    static wojournalstream *logfile;
+
+    // The name of the service
+    WCHAR m_name[MAX_SVC_NAME];
+
+    // The status of the service
+    SERVICE_STATUS m_status;
+
+    // The service status handle
+    SERVICE_STATUS_HANDLE m_statusHandle;
 
 private:
 
@@ -112,13 +131,5 @@ private:
 
     // The singleton service instance.
     static CServiceBase *s_service;
-
-    // The name of the service
-    WCHAR m_name[MAX_SVC_NAME];
-
-    // The status of the service
-    SERVICE_STATUS m_status;
-
-    // The service status handle
-    SERVICE_STATUS_HANDLE m_statusHandle;
+    static HANDLE hSvcStopEvent;
 };

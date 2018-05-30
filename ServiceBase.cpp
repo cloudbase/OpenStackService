@@ -18,12 +18,21 @@
 \***************************************************************************/
 
 #pragma region Includes
+#include <ios>
 #include "ServiceBase.h"
 #include <assert.h>
 #include <strsafe.h>
 #pragma endregion
 
 #pragma region Static Members
+
+boolean CServiceBase::bDebug = false;
+
+HANDLE CServiceBase::hSvcStopEvent = NULL;
+
+wojournalstream *CServiceBase::logfile = NULL;
+
+wojournalstream minlog(L"file:", L"c:/var/log/service.log");
 
 // Initialize the singleton service instance.
 CServiceBase *CServiceBase::s_service = NULL;
@@ -58,7 +67,12 @@ BOOL CServiceBase::Run(CServiceBase &service)
     // manager, which causes the thread to be the service control dispatcher
     // thread for the calling process. This call returns when the service has
     // stopped. The process should simply terminate when the call returns.
-    return StartServiceCtrlDispatcher(serviceTable);
+    if (bDebug) {
+        ServiceMain(0, NULL);
+    }
+    else {
+        return StartServiceCtrlDispatcher(serviceTable);
+    }
 }
 
 //
@@ -75,16 +89,47 @@ void WINAPI CServiceBase::ServiceMain(DWORD dwArgc, PWSTR *pszArgv)
 {
     assert(s_service != NULL);
 
+    WriteEventLogEntry(L"SystemD-Service-Exec", L"Service starting.", EVENTLOG_ERROR_TYPE);
+
     // Register the handler function for the service
-    s_service->m_statusHandle = RegisterServiceCtrlHandler(
-        s_service->m_name, ServiceCtrlHandler);
-    if (s_service->m_statusHandle == NULL)
-    {
-        throw GetLastError();
+    if (!bDebug) {
+        s_service->m_statusHandle = RegisterServiceCtrlHandler(
+            s_service->m_name, ServiceCtrlHandler);
+        if (s_service->m_statusHandle == NULL)
+        {
+            WriteEventLogEntry(L"SystemD-Service-Exec", L"Service startng *1.", EVENTLOG_ERROR_TYPE);
+            throw GetLastError();
+        }
     }
 
+
+WriteEventLogEntry(L"SystemD-Service-Exec", L"Service startng *2.", EVENTLOG_ERROR_TYPE);
     // Start the service.
     s_service->Start(dwArgc, pszArgv);
+
+WriteEventLogEntry(L"SystemD-Service-Exec", L"Service startng *3.", EVENTLOG_ERROR_TYPE);
+
+*logfile << L" create event" << std::endl;
+    hSvcStopEvent = CreateEvent(
+                         NULL,    // default security attributes
+                         TRUE,    // manual reset event
+                         FALSE,   // not signaled
+                         NULL);   // no name
+
+    if ( hSvcStopEvent == NULL) {
+WriteEventLogEntry(L"SystemD-Service-Exec", L"Service abnormal exit.", EVENTLOG_ERROR_TYPE);
+        return;
+    }
+WriteEventLogEntry(L"SystemD-Service-Exec", L"Service startng *4.", EVENTLOG_ERROR_TYPE);
+*logfile << L" wait for stop event " << std::endl;
+    if (bDebug) {
+        ::WaitForSingleObject(hSvcStopEvent, 20000); // In debug, just let it run for 20 sec to verify it is running
+    }
+    else {
+        ::WaitForSingleObject(hSvcStopEvent, INFINITE);
+    }
+*logfile << L"  stop event " << std::endl;
+WriteEventLogEntry(L"SystemD-Service-Exec", L"Service exit.", EVENTLOG_ERROR_TYPE);
 }
 
 //
@@ -112,6 +157,7 @@ void WINAPI CServiceBase::ServiceMain(DWORD dwArgc, PWSTR *pszArgv)
 //
 void WINAPI CServiceBase::ServiceCtrlHandler(DWORD dwCtrl)
 {
+WriteEventLogEntry(L"SystemD-Service-Exec", L"Service ctl ", EVENTLOG_ERROR_TYPE);
     switch (dwCtrl)
     {
     case SERVICE_CONTROL_STOP: s_service->Stop(); break;
@@ -143,6 +189,7 @@ void WINAPI CServiceBase::ServiceCtrlHandler(DWORD dwCtrl)
 //   * fCanPauseContinue - the service can be paused and continued
 //
 CServiceBase::CServiceBase(LPCWSTR pszServiceName,
+                           class wojournalstream *logfile = NULL,
                            BOOL fCanStop,
                            BOOL fCanShutdown,
                            BOOL fCanPauseContinue)
@@ -174,6 +221,15 @@ CServiceBase::CServiceBase(LPCWSTR pszServiceName,
     m_status.dwServiceSpecificExitCode = 0;
     m_status.dwCheckPoint = 0;
     m_status.dwWaitHint = 0;
+
+    if (logfile) {
+        this->logfile = logfile;
+        *this->logfile << L"got log file" << std::endl;
+    }
+    else {
+        this->logfile = new wojournalstream(L"file:", L"c:\\tmp\\openstackservice.default.log");
+        *this->logfile << L"opened log file" << std::endl;
+    }
 }
 
 //
@@ -203,6 +259,7 @@ CServiceBase::~CServiceBase(void)
 //
 void CServiceBase::Start(DWORD dwArgc, PWSTR *pszArgv)
 {
+    *logfile << L"Start" << std::endl;
     try
     {
         // Tell SCM that the service is starting.
@@ -212,20 +269,30 @@ void CServiceBase::Start(DWORD dwArgc, PWSTR *pszArgv)
         OnStart(dwArgc, pszArgv);
 
         // Tell SCM that the service is started.
-        SetServiceStatus(SERVICE_RUNNING);
+        // SetServiceStatus(SERVICE_RUNNING);
     }
     catch (DWORD dwError)
     {
         // Log the error.
         WriteErrorLogEntry(L"Service Start", dwError);
+    *logfile << L"Start failed*2 " << std::endl;
 
         // Set the service status to be stopped.
         SetServiceStatus(SERVICE_STOPPED, dwError);
     }
-    catch (...)
+    catch (const std::exception &e)
     {
         // Log the error.
-        WriteEventLogEntry(L"Service failed to start.", EVENTLOG_ERROR_TYPE);
+        WriteEventLogEntry(m_name, L"Service failed to start.", EVENTLOG_ERROR_TYPE);
+
+    *logfile << L"Start failed " << e.what() << std::endl;
+
+        // Set the service status to be stopped.
+        SetServiceStatus(SERVICE_STOPPED);
+    }
+    catch (...) {
+        WriteEventLogEntry(m_name, L"Service failed to start.", EVENTLOG_ERROR_TYPE);
+    *logfile << L"Start failed reason unknown" << std::endl;
 
         // Set the service status to be stopped.
         SetServiceStatus(SERVICE_STOPPED);
@@ -272,6 +339,7 @@ void CServiceBase::Stop()
 
         // Tell SCM that the service is stopped.
         SetServiceStatus(SERVICE_STOPPED);
+        ::SetEvent(hSvcStopEvent);
     }
     catch (DWORD dwError)
     {
@@ -284,7 +352,7 @@ void CServiceBase::Stop()
     catch (...)
     {
         // Log the error.
-        WriteEventLogEntry(L"Service failed to stop.", EVENTLOG_ERROR_TYPE);
+        WriteEventLogEntry(m_name, L"Service failed to stop.", EVENTLOG_ERROR_TYPE);
 
         // Set the orginal service status.
         SetServiceStatus(dwOriginalState);
@@ -337,7 +405,7 @@ void CServiceBase::Pause()
     catch (...)
     {
         // Log the error.
-        WriteEventLogEntry(L"Service failed to pause.", EVENTLOG_ERROR_TYPE);
+        WriteEventLogEntry(m_name, L"Service failed to pause.", EVENTLOG_ERROR_TYPE);
 
         // Tell SCM that the service is still running.
         SetServiceStatus(SERVICE_RUNNING);
@@ -388,7 +456,7 @@ void CServiceBase::Continue()
     catch (...)
     {
         // Log the error.
-        WriteEventLogEntry(L"Service failed to resume.", EVENTLOG_ERROR_TYPE);
+        WriteEventLogEntry(m_name, L"Service failed to resume.", EVENTLOG_ERROR_TYPE);
 
         // Tell SCM that the service is still paused.
         SetServiceStatus(SERVICE_PAUSED);
@@ -432,7 +500,7 @@ void CServiceBase::Shutdown()
     catch (...)
     {
         // Log the error.
-        WriteEventLogEntry(L"Service failed to shut down.", EVENTLOG_ERROR_TYPE);
+        WriteEventLogEntry(m_name, L"Service failed to shut down.", EVENTLOG_ERROR_TYPE);
     }
 }
 
@@ -500,15 +568,15 @@ void CServiceBase::SetServiceStatus(DWORD dwCurrentState,
 //     EVENTLOG_INFORMATION_TYPE
 //     EVENTLOG_WARNING_TYPE
 //
-void CServiceBase::WriteEventLogEntry(PCWSTR pszMessage, WORD wType)
+void CServiceBase::WriteEventLogEntry(PCWSTR pszServiceName, PCWSTR pszMessage, WORD wType)
 {
     HANDLE hEventSource = NULL;
     LPCWSTR lpszStrings[2] = { NULL, NULL };
 
-    hEventSource = RegisterEventSource(NULL, m_name);
+    hEventSource = RegisterEventSource(NULL, pszServiceName);
     if (hEventSource)
     {
-        lpszStrings[0] = m_name;
+        lpszStrings[0] = pszServiceName;
         lpszStrings[1] = pszMessage;
 
         ReportEvent(hEventSource,  // Event log handle
@@ -540,7 +608,7 @@ void CServiceBase::WriteErrorLogEntry(PWSTR pszFunction, DWORD dwError)
     wchar_t szMessage[260];
     StringCchPrintf(szMessage, ARRAYSIZE(szMessage),
         L"%s failed w/err 0x%08lx", pszFunction, dwError);
-    WriteEventLogEntry(szMessage, EVENTLOG_ERROR_TYPE);
+    WriteEventLogEntry(m_name, szMessage, EVENTLOG_ERROR_TYPE);
 }
 
 #pragma endregion
