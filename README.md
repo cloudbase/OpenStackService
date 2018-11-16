@@ -10,6 +10,8 @@ Beside just wrapping binaries the service wrapper has some interesting features:
 - `environment-file` environment file to be added to the given wrapped binary
 - `environment-file-pshell` environment file in powershell format to be added to the given wrapped binary
 - `exec-start-pre` command to be executed before starting the service
+- `service-command` service command line
+- `config` path to an ini file that may contain any of the above parameters.
 
 Simple example to wrap a binary:
 

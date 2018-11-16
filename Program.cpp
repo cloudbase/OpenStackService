@@ -40,7 +40,7 @@ struct CLIArgs
     vector<wstring> environmentFilesPShell;
     wstring execStartPre;
     wstring serviceName;
-    vector<wstring> additionalArgs;
+    wstring serviceCommand;
     wstring logFile;
 };
 
@@ -58,7 +58,9 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
         ("environment-file-pshell", wvalue<vector<wstring>>(), "Powershell environment files")
         ("exec-start-pre", wvalue<wstring>(), "Command to be executed before starting the service")
         ("service-name,n", wvalue<wstring>(), "Service name")
-        ("log-file", wvalue<wstring>(), "Log file containing  the redirected STD OUT and ERR of the child process");
+        ("service-command,c", wvalue<wstring>(), "Service command line.")
+        ("log-file", wvalue<wstring>(), "Log file containing the redirected STD OUT and ERR of the child process")
+        ("config", value<string>(), "Config file");
 
     variables_map vm;
     auto parsed = wcommand_line_parser(argc, argv).
@@ -66,6 +68,12 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     store(parsed, vm);
     auto additionalArgs = collect_unrecognized(parsed.options, include_positional);
     notify(vm);
+
+    if (vm.count("config")) {
+        auto parsed = parse_config_file(vm["config"].as<string>().c_str(), desc);
+        store(parsed, vm);
+        notify(vm);
+    }
 
     if (vm.count("environment-file"))
         args.environmentFiles = vm["environment-file"].as<vector<wstring>>();
@@ -79,19 +87,26 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     if (vm.count("log-file"))
         args.logFile = vm["log-file"].as<wstring>();
 
-    if (vm.count("service-name"))
+    if (vm.count("service-name") && vm.count("service-command"))
+    {
         args.serviceName = vm["service-name"].as<wstring>();
+        args.serviceCommand = vm["service-command"].as<wstring>();
+    }
     else if (!additionalArgs.empty())
     {
         args.serviceName = additionalArgs[0];
         additionalArgs = vector<wstring>(additionalArgs.begin() + 1, additionalArgs.end());
+
+        auto it = additionalArgs.begin();
+        args.serviceCommand = *it++;
+        for (; it != additionalArgs.end(); ++it)
+            args.serviceCommand += L" \"" + *it + L"\"";
     }
 
     if(args.serviceName.empty())
         throw exception("Service name not provided");
 
-    args.additionalArgs = additionalArgs;
-    if (args.additionalArgs.empty())
+    if (args.serviceCommand.empty())
         throw exception("Service executable not provided");
 
     return args;
@@ -189,11 +204,6 @@ int wmain(int argc, wchar_t *argv[])
             }
         }
 
-        auto it = args.additionalArgs.begin();
-        wstring cmdLine = *it++;
-        for (; it != args.additionalArgs.end(); ++it)
-            cmdLine += L" \"" + *it + L"\"";
-
         if (!args.logFile.empty())
         {
             SECURITY_ATTRIBUTES sa;
@@ -214,7 +224,7 @@ int wmain(int argc, wchar_t *argv[])
                 throw exception(msg);
             }
         }
-        CWrapperService service(args.serviceName.c_str(), cmdLine.c_str(),
+        CWrapperService service(args.serviceName.c_str(), args.serviceCommand.c_str(),
                                 args.execStartPre.c_str(), env, TRUE, TRUE, FALSE, hLogFile);
         if (!CServiceBase::Run(service))
         {
