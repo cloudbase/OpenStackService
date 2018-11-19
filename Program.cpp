@@ -70,7 +70,7 @@ CLIArgs ParseArgs(int argc, wchar_t *argv[])
     notify(vm);
 
     if (vm.count("config")) {
-        auto parsed = parse_config_file(vm["config"].as<string>().c_str(), desc);
+        auto parsed = parse_config_file<char>(vm["config"].as<string>().c_str(), desc);
         store(parsed, vm);
         notify(vm);
     }
