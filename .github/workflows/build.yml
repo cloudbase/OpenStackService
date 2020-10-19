@@ -1,0 +1,21 @@
+name: Build OpenStack Service for Windows ARM64
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        platform: ['x64']
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Setup MSBuild.exe
+        uses: warrenbuckley/Setup-MSBuild@v1
+      - name: Compile OpenStackService
+        shell: cmd
+        run: scripts/build_arm64.cmd
+      - uses: actions/upload-artifact@v1
+        with:
+          name: OpenStackService.exe
+          path: "x64/SDK10Release/OpenStackService.exe"
