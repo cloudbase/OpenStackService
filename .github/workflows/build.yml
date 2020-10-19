@@ -17,5 +17,9 @@ jobs:
         run: scripts/build_arm64.cmd
       - uses: actions/upload-artifact@v1
         with:
-          name: OpenStackService.exe
+          name: OpenStackService-x64.exe
           path: "x64/SDK10Release/OpenStackService.exe"
+      - uses: actions/upload-artifact@v1
+        with:
+          name: OpenStackService-arm64.exe
+          path: "arm64/SDK10Release/OpenStackService.exe"
